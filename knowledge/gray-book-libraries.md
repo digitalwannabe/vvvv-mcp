@@ -1,0 +1,1246 @@
+﻿<!-- gray-book section: Libraries -->
+# Gray Book — Libraries
+
+> Source: https://thegraybook.vvvv.org/ (CC-licensed)
+
+---
+<!-- page: 3d/editing-shaders.md -->
+
+# Editing shaders
+
+Shaders are written in [SDSL](https://doc.stride3d.net/latest/en/manual/graphics/effects-and-shaders/shading-language/index.html) which is a superset of [HLSL](http://msdn.microsoft.com/en-us/library/windows/desktop/bb509561%28v=vs.85%29.aspx).
+
+vvvv does not come with a built-in shader editor. Instead you can use any text editor of your choice. Simply associate the file-ending `.sdsl` with it. If you now Rightclick -> Open on a shader node, the code will open in the specified editor. Whenever you save the file, the shader node will be updated.
+
+## Recommended: Visual Studio Code with Stride Shader Tools
+
+[Visual Studio Code](https://code.visualstudio.com/) or [VSCodium](https://vscodium.com/) with the **[Stride Shader Tools](https://marketplace.visualstudio.com/items?itemName=stride.sdsl)** extension ([OpenVSX](https://open-vsx.org/extension/tebjan/sdsl)) provides:
+
+* Syntax highlighting for SDSL
+* Context-aware code completion (inherited members, streams, semantics, compositions)
+* Inheritance tree visualization in sidebar
+* Member explorer showing all available methods and variables
+* Go-to-definition through the inheritance chain
+* Real-time error reporting
+* Hover documentation for types, methods, and semantics
+* SDSL-level debugging with RenderDoc integration *(coming soon)*
+
+## Alternative: Other Text Editors
+
+If you prefer a different editor, you can use any editor with HLSL syntax highlighting:
+
+* [Sublime Text](https://www.sublimetext.com/) with the "HLSL Syntax" package
+* Any text editor that supports HLSL highlighting
+
+## Error Reporting with Visual Studio (Alternative)
+
+**Visual Studio Code with Stride Shader Tools** (recommended above) provides real-time error reporting.
+
+If you prefer **Visual Studio 2022**, you can also get error reporting with this setup:
+* [Visual Studio 2022](https://visualstudio.microsoft.com/)
+* The Stride extension for Visual Studio, which comes with the [Stride installer](https://stride3d.net/download/)
+* Stride itself must also be installed. To see which exact version of Stride is required for your vvvv version, check the "About" dialog in vvvv
+
+### Additional Tools
+* **[Stride Shader Explorer](https://github.com/tebjan/Stride.ShaderExplorer/releases)**: Standalone tool for exploring the built-in shaders and their inheritance hierarchy. Now integrated into the VS Code extension, but still useful as a separate browser.
+* **Visual Studio enhancements** (if using VS):
+  * Enable the [scroll bar code map](https://learn.microsoft.com/en-us/visualstudio/ide/how-to-track-your-code-by-customizing-the-scrollbar?view=vs-2022)
+  * [Productivity Power Tools](https://marketplace.visualstudio.com/items?itemName=VisualStudioPlatformTeam.ProductivityPowerPack2022) for highlighting the selected word
+
+---
+<!-- page: 3d/geometry.md -->
+
+# Geometry
+
+## Rhino.3dm
+Library to access Rhino *.3dm Files.  
+NuGet: [VL.Rhino.3dm](https://www.nuget.org/packages/VL.Rhino.3dm)
+
+## See also
+Relevant libraries that have not yet been tailored for VL. Refer to [Using .NET libraries](../extending/using-net-libraries.md) for learning how to explore them.
+* [geometry3Sharp](https://www.nuget.org/packages/geometry3Sharp/)
+* [GShark](https://www.nuget.org/packages/GShark/)
+
+---
+<!-- page: 3d/gpu-debugging.md -->
+
+## GPU Debugging in vvvv
+
+This guide explains the two main options for GPU debugging in vvvv. You can use either:
+
+- The **Stride Profiler**: A simple, real-time tool built into vvvv that provides quick insights into performance and resource usage.
+- **RenderDoc**: A more detailed tool for frame-by-frame debugging, allowing you to inspect GPU calls, capture frames, and analyze shaders in-depth, though not in real-time.
+
+Both tools can help you identify performance bottlenecks and issues, depending on the level of detail you need. They can also be used together.
+
+### Performance Profiling with the Stride Profiler
+
+The [**Stride Profiler**](https://doc.stride3d.net/4.2/en/manual/troubleshooting/profiling.html) is a built-in tool in vvvv that allows you to quickly assess performance in real time. It gives an overview of which parts of a patch are consuming the most resources.
+
+To enable the Stride Profiler, press **F3** in any Stride window. A small text display will appear in the top left corner showing the **current framerate** (FPS).
+  
+#### Navigating the Profiler
+
+You can view different performance details by switching between pages with **F5**:
+- **FPS Page**: Displays the current framerate.
+- **CPU Page**: Lists CPU performance
+- **GPU Page**: Lists GPU performance
+
+#### Sorting and Viewing Details
+by default, the entries are sorted by time taken (longest calls/actions listed first).
+- **F6**: Switches the sorting order between performance length (default) and action name.
+- **1, 2, 3, 4 Keys**: Switch between multiple pages if there are more logs than can fit on one page.
+
+![](../../../images/libraries/3d/stride_profiler.png)
+
+#### Profiler Key Input
+
+Each shader or renderer in a patch has a **Profiler Key Input**. Entering a unique name in this input makes it easier to track the performance of specific elements in the Profiler window.
+
+The Stride Profiler is particularly helpful for quickly identifying which parts of a patch have the highest performance cost. It provides a quick and efficient way to monitor performance without the need for external tools.
+
+### Detailed Debugging with RenderDoc
+
+For more in-depth GPU debugging, you can use **RenderDoc**. This tool allows you to capture individual frames and inspect GPU calls, shaders, and other detailed aspects of rendering that aren't visible in real-time with the Stride Profiler.
+
+#### Prerequisites
+
+1. **Install RenderDoc**: Before using the RenderDocManager in vvvv, you must install RenderDoc. Download the latest version here: [Download RenderDoc](https://renderdoc.org).
+
+2. **Start vvvv with the RenderDoc Flag**:
+   - vvvv must be started with the `--renderdoc` flag.
+   - This flag enables the connection between RenderDoc and vvvv.
+   - Optional: pass `--debug-gpu` to enable the D3D11 debug layer as well, see further down for its requirements
+
+#### Using the RenderDocManager in vvvv
+
+##### 1. Setting Up the RenderDocManager Node
+
+Once vvvv is running with the `--renderdoc` flag, open any patch that references **VL.Stride**, and add the **RenderDocManager** node.
+
+##### 2. Enabling the Stride Profiler
+
+Before capturing frames, enable the **Stride Profiler** as described above.
+
+It doesn’t matter which page is currently displayed, but the profiler **must be enabled** for RenderDoc to get detailed information for organizing GPU calls.
+
+##### 3. Capturing Frames
+
+- **Single Frame Capture**: Trigger the **Capture Next Frame** input to capture the next frame rendered by the GPU. This frame is stored for later analysis in RenderDoc.
+  
+- **Multiple Frame Captures**: Use the **Number of Frames to Capture** input to capture a series of successive frames. This is particularly useful when debugging recurring issues like periodic frame drops or performance dips. For example, if a problem occurs every `n` frames, you can set the number of frames to `n` and capture the relevant frames for analysis.
+
+![](../../../images/libraries/3d/renderdoc_node.png)
+
+### Attaching RenderDoc to vvvv
+
+1. Start RenderDoc.
+2. Go to **File** > **Attach to Running Instance**.
+3. In the pop-up window, look for **localhost** and find **vvvv** underneath it.
+4. Double-click **vvvv** to connect RenderDoc to the vvvv instance and access the captured frames. If no frames have been captured yet, nothing will appear, but you can trigger frame capture from vvvv or directly in RenderDoc.
+
+![](../../../images/libraries/3d/attach.png)
+
+### Debugging Captured Frames in RenderDoc
+
+Once frames are captured and loaded in RenderDoc:
+1. **Double-click** on a captured frame:
+   - RenderDoc will analyze the frame, which may take a few seconds.
+   - You will see all GPU calls made by vvvv during that frame.
+
+2. **Timeline**: At the top of the RenderDoc interface, a timeline displays the sequence of GPU events.
+
+3. **Draw Calls and Pipeline State**: Below the timeline, you’ll find the draw calls and the pipeline state, where you can inspect shaders, resources, and other rendering details.
+
+4. **Shader Debugging**: 
+   - To debug pixel, vertex, or compute shaders, go to the **Pipeline State** section.
+   - For more information on debugging shaders in RenderDoc, refer to their official guide: [Shader Debugging in RenderDoc](https://renderdoc.org/docs/how/how_debug_shader.html).
+
+![](../../../images/libraries/3d/renderdoc.png)
+
+### Performance Profiling with RenderDoc
+
+RenderDoc also provides performance counters that help assess GPU performance metrics for specific frames. These counters give you deeper insights into which GPU calls are the most performance-heavy.
+
+#### 1. Enabling the Performance Counter Viewer
+
+- Go to **Window > Performance Counter Viewer** in RenderDoc.
+- In this view, you can access different GPU counters, including generic counters and **Nvidia-specific counters**.
+
+To enable Nvidia-specific counters:
+1. Download the **Nsight Perf SDK** from the official Nvidia page: [Nsight Perf SDK](https://developer.nvidia.com/nsight-perf-sdk).
+2. Extract the SDK contents.
+3. Copy the `nvperf_grfx_host.dll` file to the following directory:
+`C:\Users\YourUsername\AppData\Roaming\renderdoc\plugins\nv\nvperf_grfx_host.dll`
+4. Reopen the frame capture in RenderDoc.
+  
+Once enabled, you can perform **Sample Counters** on captured frames. This will generate a detailed list showing various performance metrics, such as the time taken in milliseconds for specific GPU calls.
+
+#### 2. Analyzing Performance Counters
+
+- The Performance Counter Viewer will display metrics like time, memory usage, and other performance-related data.
+- Clicking on the **EID** (Event ID) in the list allows you to jump to the relevant call in the timeline or the draw call list for deeper inspection.
+
+![](../../../images/libraries/3d/counter_view.png)
+
+For more information on how to use the Performance Counter Viewer, refer to the official RenderDoc documentation: [Performance Counter Viewer in RenderDoc](https://renderdoc.org/docs/window/performance_counter_viewer.html).
+
+For further details on using RenderDoc, including advanced features like shader debugging and performance counters, refer to the official [RenderDoc documentation](https://renderdoc.org/docs/).
+
+### Enabling the D3D11 debug layer
+
+It's also possible to enable the [D3D11 debug layer](https://learn.microsoft.com/en-us/windows/win32/direct3d11/overviews-direct3d-11-devices-layers) and capture its output with tools like [DebugView](https://learn.microsoft.com/en-us/sysinternals/downloads/debugview).
+
+To enable the debug layer one needs to
+  1. Enable the optional Windows feature "Graphics Tool" - for detailed instruction see above linke
+  2. Start vvvv.exe with `--debug-gpu` - tells vvvv to create a D3D11 debug device
+
+Note that when also enabling RenderDoc as well, DebugView no longer seems to be able to capture information.
+
+---
+<!-- page: 3d/graphics-cards.md -->
+
+# Graphics Cards
+
+vvvv is always only using one GPU! This means that you cannot simply add a second GPU to a PC, move a render window to it and assume that this window is then running on that second GPU!
+
+If your system has multiple GPUs, you can decide for each program (including vvvv.exe or any program you [exported](../../hde/exporting.md)), which GPU it is running on. This is done by [assigning a graphics performance preference](https://www.ghacks.net/2021/10/29/how-to-assign-graphics-performance-preferences-to-windows-11-programs/) for it.
+
+An exception to the single-GPU rule is, when using multiple GPUs in [SLI](https://www.nvidia.com/en-gb/geforce/technologies/sli/) mode.
+
+---
+<!-- page: 3d/models.md -->
+
+# Models and Meshes
+You can load a model from file with the `FileModel` node. The following file types are supported:
+* `.fbx;.dae;.3ds;.gltf;.glb;.obj;.blend;.x;.md2;.md3;.dxf;.ply;.stl;.stp`
+ 
+ The loaded model can be connectd to a `ModelEntity` to render it with a material.
+
+ At the moment we don't support automatic loading of materials, textures, animations or skeletons. This will be added in a later release. See the help patch `Load Assets from File` for an example, that also shows how to assign multiple materials to the model.
+
+Models can also be loaded from a Stride game project. This has the advantage that you can set up the model, including materials in the Stride editor. See [Assets](https://doc.stride3d.net/4.0/en/manual/game-studio/assets.html) and [Animation](https://doc.stride3d.net/4.0/en/manual/animation/index.html) int the Stride manual. See the help patch `Load Stride Project` and `Modify Entities from a Stride Project`.
+
+## Difference between Model and Mesh
+
+### Model
+A `Model` is a high-level class that combines geometry (meshes) with appearance (materials) and optionally a skeleton for animation. This makes it possible to represent a simple model with just one mesh and one material or a complex 3d object, such as an animated character.
+
+In the scene graph, a model has to be assigned to a `ModelComponent` that is part of an `Entity`. See [Rendering](rendering.md).
+
+![](../../../images/libraries/3d/stride_model.svg)
+<center><i>Model data structure</i></center>
+<br>
+
+To join the data of a model you can use the node `MeshModel` for the simple case of one mesh and one material or `MeshesModel` for multiple meshes and materials. To connect a single model to the scene graph, you can use the node `ModelEntity` that internally does all the entity and component setup for you.
+
+### Mesh
+A `Mesh` is a part of the model that contains the geometry information and an index that points to a material in the material list of the model.
+
+![](../../../images/libraries/3d/stride_mesh.svg)
+<center><i>Mesh data structure</i></center>
+<br>
+
+The actual geometry data is stored in a class called `MeshDraw`, it holds the GPU resources for the index and vertex buffers that will be used to draw the geometry. In detail, the `MeshDraw` has `IndexBufferBinding` and `VertexBufferBinding` properties that hold the respective buffer plus some information for the graphics pipeline. So the full path from model to first vertex buffer is: `Model.Meshes[0].Draw.VertexBuffers[0].Buffer`.
+
+The vertices stored in a vertex buffer can have different fields, such as normals, texture coordinates, etc. To make the workflow of getting the vertex data easier, you can use the `MeshSplit` nodes, see the help patch `Split a mesh into its components`.
+
+### Dynamic Mesh
+The nodes `DynamicMesh` or `DynamicMesh (Indexed)` create a mesh from vertex and/or index data.
+
+To connect a single mesh to the scene graph, you can use the node `MeshEntity` that internally does all the entity and component setup for you. A mesh can also be rendered with the low-level workflow using a `MeshRenderer`. See [Rendering](rendering.md) for more details on that. Also, see the help patch `Dynamic Mesh` for an example of setting up a mesh and rendering it.
+
+---
+<!-- page: 3d/rendering.md -->
+
+# Rendering
+VL.Stride offers two workflows for rendering:
+* **High-level**: Work with models, lights, materials, textures (Entity-Component-System)
+* **Low-level**: Work with draw calls, pipeline states, and GPU resources directly
+
+If you worked with a game engine before, then you've used the high-level approach. If you're coming from vvvv beta and you worked with DX9/DX11, then you've been using the low-level approach.
+
+Both workflows can be combined without any drawbacks, and both can render into a texture or an output window. You can also write shaders for both.
+
+## High-level (scene graph)
+Commonly known as entity-component-system (ECS). The scene graph consists of a tree of scenes that have entities.
+
+![](../../../images/libraries/3d/stride_ecs.svg)
+<center><i>Scene graph data structure</i></center>
+<br>
+
+Each entity has a list of components that define the behavior and functionality of the entity. An entity can also have a list of child entities.
+
+![](../../../images/libraries/3d/stride_entity.svg)
+<center><i>Entity data structure</i></center>
+<br>
+
+Every entity has a `TransformComponent`. Child entities will multiply their transformation with the parent transformation.
+
+To build the scene graph you can use the `Group` or `Group (Spectral)` nodes in the category `[Stride]`. A group node is technically just an entity that sets the input entities as its child entities.
+
+### Root nodes
+`SceneWindow` and `SceneTexture` both set up the scene system. Connect a `RootScene` to either of them and start building the scene graph from there.
+
+See the help patches: `Overview Scene Graph Basics`, `Overview Scene Graph Advanced`, and `Work with Children`.
+
+### Camera
+The `SceneWindow` node comes with a built-in default camera that can be used with the mouse to look around in the scene. The default camera can be overwritten by connecting a camera to the _Camera_ input pin.
+
+To build your own camera, you can use the Entity node and connect a `CameraComponent` to it, or use the `Camera` node that combines these two. The help browser has a section for cameras with several help patches.
+
+### Models
+See [Models and Meshes](models.md).
+
+### Lights
+A light component can be attached to any entity and it will use the transformation of the entity as the light transformation. The help browser has a dedicated section for lights with many help patches.
+
+See also: [Stride Lights and Shadows doc](https://doc.stride3d.net/latest/en/manual/graphics/lights-and-shadows/index.html)
+
+## Post Effects
+The Stride render pipeline has a set of post-processing effects that can be applied to the rendered 3d scene. Such as ambient occlusion, bloom, and other screen space or image base effects.
+
+The help browser has a `PostFX` section with many help patches.
+
+See also: [Stride Post Effects doc](https://doc.stride3d.net/latest/en/manual/graphics/post-effects/index.html)
+
+## Low-level (custom rendering)
+This workflow allows you to manage your own draw calls with the graphics API. It takes more effort to use because you need to know about shaders, buffers, pipeline states, and other graphics API features.
+
+The main data type is `IRenderer`. This interface can be implemented to take part in the rendering by connecting it to a render sink. The `MeshRenderer` or `QuadRenderer`, for example, are implementations of this interface.
+
+You can order draw calls with the `Group` and `Group (Spectral)` nodes in the category `[Stride.Rendering]`. These group nodes are implementations of `IRenderer` that pass the draw call to the renderers connected to the input.
+
+### Renderer sinks
+There are several sinks to which you can connect an `IRenderer`. Depending on the use case and the moment in which you want to render.
+
+#### `RenderEntity`
+To participate in the scene rendering, this node can be placed in the scene graph and will pass on the draw call of the `SceneWindow` or `SceneTexture` to the connected `IRenderer`. It also has a setting to specify the render stage of the scene:
+* `BeforeScene`: non-graphical, useful to prepare buffers or textures for the scene
+* `Opaque`: the normal 3d render stage
+* `Transparent`: the transparent stage, after Opaque
+* `AfterScene`: after the scene, this can be used to draw into the final render target
+* `ShadowCaster*`: these stages can be used to render into the shadow maps
+
+#### `RenderTexture`
+Render something into a texture with a specified size and format. Useful for rendering helper textures, such as masks, text, or other basic graphics that will be used in the scene.
+
+#### `RenderWindow`
+Render something into a window directly, without the high-level scene setup. Useful to display a fullscreen texture or to compose the final output of an application.
+
+#### `RendererScheduler`
+A very low-level node that schedules a draw call without a sink. It is used, for example, by the [TextureFX](texturefx.md) nodes to render into a texture.
+
+If there is more than one `RendererScheduler`, then the order in which they are called in the update loop, is the order in which they will be called during the rendering.
+
+For more details, see also: [Stride Low-Level API doc](https://doc.stride3d.net/latest/en/manual/graphics/low-level-api/index.html) and [Programming guide for Direct3D 11](https://docs.microsoft.com/en-us/windows/win32/direct3d11/dx-graphics-overviews)
+
+---
+<!-- page: 3d/shaders.md -->
+
+# Shaders
+Shaders are written in [SDSL](https://doc.stride3d.net/4.0/en/manual/graphics/effects-and-shaders/shading-language/index.html), an advanced high-level shader language that supports OOP concepts and multiple inheritance. This allows to write short and nice looking shader code.
+
+Here is a step by step guide to get you started:
+
+## Prepare an editor
+vvvv does not come with a built-in shader editor. We recommend **Visual Studio Code** with the **Stride Shader Tools** extension for the best experience. See [Editing Shaders](editing-shaders.md) for setup and other options. 
+
+## Start from a Template
+![](../../../images/libraries/3d/shaderwizard.png)
+
+Use the built-in Sharder Wizard (as of version 5.0)
+- `Quad` -> `New` -> `Shader File`
+- Choose one of the templates
+- Specify a name for the new shader
+- In the `Open on Create` pulldown you can choose:
+  - Solution: This is the best option, assuming you have Visual Studio installed with the Stride Extension as explained in [Editing Shaders](editing-shaders.md)
+  - Open the .sdsl file: If you don't have Visual Studio installed, you can also simply edit the .sdsl files with any text editor
+  - Open Folder: In case you don't want to edit the file at this point, you can also just see where it is located by having the explorer opened, pointing to it
+- Press `Create`
+  - This will create the new shader file on disk, reference the VL.Stride package with your current document (if it isn't already) and open the shader
+
+## Create the shader node
+Open the [NodeBrowser](../../hde/the_nodebrowser.md) and find the shader by the name you gave it.
+
+Now anytime you save a change in your shader file, the node will be updated accordingly.
+
+## Further details
+### Scope
+Any .vl document that has VL.Stride set as a dependency will pick up shader files that are placed next to it in special folder called "shaders". Multiple .vl documents can share the same shaders folder.
+
+> [!NOTE]
+> Shader files share a global scope, two files with the same name are not allowed, even if they are referenced by two different .vl documents.
+
+### Special Suffixes
+If a shader file ends with one of the pre-defined suffixes, the shader will be converted into a VL node.
+#### _ShaderFX
+A node that just represents "a piece of code" that can be used to compose larger shaders. This is the most flexible type of node, it can work together with all other shader node types.
+#### _DrawFX
+A node that can be used to draw geometry.
+#### _ComputeFX
+A node that represents a compute shader to work with arbitrary data on the GPU.
+#### _TextureFX
+Specialized nodes to process textures. See more in the chapter [TextureFX](texturefx.md).
+
+## Core Concepts
+### Includes and Static Calls
+You can use the [#include directive](https://docs.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-appendix-pre-include) just as you would in HLSL. But often you'll not need it because you can call a static function of any shader that is in [scope](#scope) (e.g in the same directory, or both in the /shaders folder next to any .vl document that is loaded). Static functions are functions that don't use any stream variables or class variables, like shader inputs. See also [Static Calls](https://doc.stride3d.net/latest/en/manual/graphics/effects-and-shaders/shading-language/shader-classes-mixins-and-inheritance.html#static-calls) in the Stride documentation.
+
+If you have a file `MyUtils.sdsl` like this:
+```c
+shader MyUtils
+{
+    float4 Invert(float4 col)
+    {
+        col.rgb = 1 - col.rgb;
+        return col;
+    }
+};
+```
+
+You can call its static functions in another file like so:
+
+```c
+shader MyFx_TextureFX : FilterBase
+{
+    float4 Filter(float4 tex0col)
+    {
+        return MyUtils.Invert(tex0col);
+    }
+};
+```
+
+### Inheritance
+The main purpose of inheritance is re-using existing shader code. You can think of it like importing or including the code of another shader into your own shader.
+
+For examples, see [Inheritance](https://doc.stride3d.net/latest/en/manual/graphics/effects-and-shaders/shading-language/shader-classes-mixins-and-inheritance.html#example-code-inheritance) in the Stride documentation.
+
+To understand the shader inheritance hierarchy better, you can:
+* Use the **VS Code Stride Shader Tools extension** which shows the inheritance tree in a sidebar panel while you edit (see [Editing Shaders](editing-shaders.md))
+* Use the standalone [Stride.ShaderExplorer](../graphics-3d.md#useful-tools) tool to browse and export shader hierarchies
+
+### Composition
+Compostion allows a shader A to use other shader B like a variable and call functions of it. The main feature is, that the other shaders C or D can be used as composition if they inhertit from the shader class B, that is expected as composition variable in shader A. The fact that you can use different implementations (shaders that inherit from B) as the composition, allows for polymorphism known as __interfaces__ in OOP languages.
+
+For examples, see [Composition](https://doc.stride3d.net/latest/en/manual/graphics/effects-and-shaders/shading-language/composition.html) in the Stride documentation.
+
+### Streams
+SDSL has a convenient way to pass parameters across the different stages of your shader. Simply declare a variable as stream variable and write and read to it in any shader stage. The SDSL compiler will generate the input and output structs for each shader stage.
+
+For examples, see [Automatic shader stage input/output](https://doc.stride3d.net/latest/en/manual/graphics/effects-and-shaders/shading-language/automatic-shader-stage-input-output.html) in the Stride documentation.
+
+---
+<!-- page: 3d/texturefx.md -->
+
+# TextureFX
+
+TextureFX is a specification for nodes that do GPU/shader based texture operations. Shaders are written in [SDSL](https://doc.stride3d.net/latest/en/manual/graphics/effects-and-shaders/shading-language/index.html) which is a superset of [HLSL](http://msdn.microsoft.com/en-us/library/windows/desktop/bb509561%28v=vs.85%29.aspx). We distinguish Sources, Mixers, Filters and Utils.
+
+Here is what you need to know to write your own:
+
+## Creating a new TextureFX
+
+First, see [Editing Shaders](editing-shaders.md) on setting up an external shader editing application. 
+
+Then follow [Start from a Template](shaders.md#start-from-a-template) for the quickest way to write a shader. If instead you want to create a shader file manually, here is what you need to take care of in order for the node factory to pick up a file and interpret it as a TextureFX shader:
+
+* The file must be placed in a subfolder called `shaders` next to your .vl file
+* The shader name must be unique among the shaders shipping with vvvv and your own
+* The shader name must end in **_TextureFX**
+* The filename must be: **[shader-name]_TextureFX.sdsl** 
+
+## Category and Aspects
+
+By default, every TextureFX node will show up in the `Stride\Textures` category. In order to move a node to a subcategory, use a [node attribute](#node-attributes).
+
+Aspects, like "Experimental", "Internal", "Obsolete" and "Advanced" can be specified in two different ways: 
+* Either as part of the shaders filename, in which case you must not forget that the shader name itself must be identical to the filename
+* Or as part of the category [node attribute](#node-attributes).
+
+## Base Shaders to inherit from
+
+There are a bunch of shaders you can [inherit](shaders.md#inheritance) useful functionality from. Multiple Inheritance is allowed!
+
+* Shipping with Stride: Use the [Shader Explorer](https://github.com/tebjan/Stride.ShaderExplorer) to browse available shaders to inherit from (requires also [Stride](https://stride3d.net/download/) to be installed)
+* Shipping with VL.Stride: Explore the .sdsl files in: C:\Program Files\vvvv\vvvv_gamma_...\lib\packs\VL.Stride.Runtime...\stride\Assets\Effects
+
+### Recommended base shaders
+
+#### TextureFX
+[TextureFX](https://github.com/vvvv/VL.Stride/blob/preview/gamma-2021.4/packages/VL.Stride.Runtime/src/Effects/TextureFX/TextureFX.sdsl) derives from [ImageEffectShader](https://github.com/stride3d/stride/blob/master/sources/engine/Stride.Rendering/Rendering/Images/ImageEffectShader.sdsl), [SpriteBase](https://github.com/stride3d/stride/blob/master/sources/engine/Stride.Graphics/Shaders/SpriteBase.sdsl), [ShaderBase](https://github.com/stride3d/stride/blob/master/sources/engine/Stride.Graphics/Shaders/ShaderBaseStream.sdsl), [Texturing](https://github.com/stride3d/stride/blob/master/sources/engine/Stride.Graphics/Shaders/Texturing.sdsl) and [ShaderUtils](https://github.com/vvvv/VL.Stride/blob/preview/gamma-2021.4/packages/VL.Stride.Runtime/src/Effects/Common/ShaderUtils.sdsl).
+
+#### FilterBase
+Derives from TextureFX. Allows to you implement the Filter() function, which comes with the color of the input texture as parameter:
+
+```c
+shader MyFx_TextureFX : FilterBase
+{
+    float4 Filter(float4 tex0col)
+    {
+        tex0col.rgb = 1 - tex0col.rgb;
+        return tex0col;
+    }
+};
+```
+> [!NOTE]
+> Using the `tex0col` input is not mandatory and you can still add other texture inputs to sample from.
+
+#### MixerBase
+Derives from TextureFX. Allows you to implement the Mix() function, which comes with the colors of the two input textures and a fader parameter:
+
+```c
+shader Mix_TextureFX : MixerBase
+{
+    float4 Mix(float4 tex0col, float4 tex1col, float fader)
+    {
+        return lerp(tex0col, tex1col, fader);	
+    }
+};
+```
+> [!NOTE]
+> Using the `tex0col` and `tex1col` inputs is not mandatory and you can still add other texture inputs to sample from.
+
+#### ShaderUtils
+[ShaderUtils](https://github.com/vvvv/VL.Stride/blob/preview/gamma-2021.4/packages/VL.Stride.Runtime/src/Effects/Common/ShaderUtils.sdsl) defines constants like PI and gives access to many commonly used shader snippets.
+
+## Include Files
+See [Includes](shaders.md#includes).
+
+## Node Attributes
+Attributes allow you to configure your TextureFX node. Here is an example of some attributes applied to a shader:
+
+```c
+[Category("Filter")]
+[Summary("Description for what the filter does")]
+[Remarks("Any special notes")]
+[Tags("Space-separated list of tags")]
+[OutputFormat("R8G8B8A8_UNorm_SRgb")]
+shader MyFX_TextureFX : TextureFX
+{
+    stage override float4 Shading()
+    {
+        return ColorUtilityTemp.LinearToSRgb(InTex0());
+    }
+};
+```
+
+| Attribute | Description
+|---|---|
+| Category | If not specified, the node will show up under `Stride\Textures`. Specifying a category allows you to put the node in a subcategory from there. Use `:` to define a new root category (e.g. `:My.Category`). Also [aspects](../extending/aspects.md) can be added among the category here, like e.g. Filter.Experimental
+| Summary | A short info that shows up as tooltip on the node in the NodeBrowser and when hovered in a patch.
+| Remarks | Additional info regarding the node visible on the tooltip in the patch.
+| Tags | A list of search terms (separated by space, not comma!) the node should be found with, when typed in the NodeBrowser.
+| OutputFormat | Allows to specify the outputs texture format. Valid Values: [PixelFormats](https://github.com/stride3d/stride/blob/master/sources/engine/Stride/Graphics/PixelFormat.cs). If not specified, defaults to R8G8B8A8_UNorm_SRgb.
+| WantsMips | Requests mipmaps for a specific texture input. See [Mipmaps](#mipmaps) below.
+| DontConvertToLinearOnRead | You'll most likely not need this flag! If set, disables the automatic sRGB-to-linear conversion that happens when reading (sampling) from an sRGB input texture. Only relevant if the input texture format has the `_SRgb` suffix and the pipeline is set to linear color space, which is the default. See [sRGB and Linear Color Space](#srgb-and-linear-color-space) below.
+| DontConvertToSRgbOnWrite | You'll most likely not need this flag! If set, this flag disables the automatic linear-to-sRGB conversion that happens when writing the shader result into an sRGB texture. Only relevant if OutputFormat has the `_SRgb` suffix and the pipeline is set to linear color space, both of which is the default. See [sRGB and Linear Color Space](#srgb-and-linear-color-space) below.
+
+## Source Node Attributes
+The following attributes are specifically for use with Source TextureFX:
+
+```c
+[TextureSource]
+shader Foo_TextureFX : TextureFX
+```
+
+| Attribute | Description
+|---|---|
+| TextureSource | Specifies a shader to behave as a [TextureFX Source](#sources). Also: Any Texture input pin will keep its name as declared (For Filters and Mixers this is not the case. There the pins are renamed to have concise namings across all nodes)
+
+## Pin Attributes
+Every pin definition can have the following Attributes:
+
+| Attribute | Description
+|---|---|
+| Summary | A short info that shows up as tooltip on the pin
+| Remarks | Additional info that shows up as tooltip on the pin
+| Optional | Pins marked as optional don't show up on the node by default. They need to be activiated via the nodes configuration menu.
+| Color | To have a float4 input show up as a color pin
+| EnumType | To have an int input show up as an enum. **NOTE**: This also requires you to define the specified enum in C# and have it referenced by the .vl documents you're using the TextureFX in.
+| Default | Only for Compute inputs to specify their default. For primitive inputs you can simply set the default with the variable definition.
+
+### Examples
+```c
+[Color]
+[Summary("The color to do this and that")]
+float4 MyColor;
+
+[EnumType("VL.Stride.Effects.TextureFX.NoiseType")]
+int Type;
+
+[Default(1, 1, 1, 1)]
+compose ComputeFloat4 Control;
+```
+
+## Inputs
+Every TextureFX node has exactly one texture output and a couple of inputs by default:
+
+### Sources
+| Name | Type | Optional | Description
+|---|---|---|---|
+| Output Format | PixelFormat Enum | x | The format of the output texture, defaults to R8G8B8A8_UNorm_SRgb
+| Output Size | Int2 |  | The size of the output texture
+| Enabled | Boolean |  | Whether or not the output is updated
+
+To make a TextureFX a "Source", specify the ["TextureSource" attribute](#source-node-attributes).
+  
+### Filter, Mixer and Utils
+| Name | Type | Optional | Description
+|---|---|---|---|
+| Input | Texture | | 
+| Sampler | SamplerState  | x | Allows to override the default sampler
+| Control | GPU<Vector4>  | | Allows to blend between the input and the result of the operation
+| Output Format | PixelFormat Enum | x | Allows to override the format of the output texture, defaults to `None`, meaning the format of the input texture is used
+| Output Size | Int2 | x | Allows to override the size of the output texture
+| Output Texture | Texture | x | Allows to render the output in a given texture, rather than using nodes own texture
+| Apply | Boolean | | Whether the effect is applied to the input texuture, or the effect is bypassed and the input is returned unchanged
+
+## Multiple passes
+At this point there is no support for multiple passes in shader code. That said, you can still create multipass TextureFX by preparing the passes as individual TextureFX and then plugging them together in a patch. For an example, see how the Glow filter is done.
+
+Note that for such cases it makes sense to mark the individual passes with the "Internal" [aspect](#category-and-aspects), because they probably are not meant to be used on their own and therefore should not show up in the NodeBrowser.
+
+## Mipmaps
+Some effects need mipmaps for the input texture. This can be indicated via the `[WantsMips("")]` attribute. It takes a comma separated list of texture variable names that need mipmaps. The TextureFX wrapper will then take care of generating the mipmaps, if the texture doesn't have them already. To save performance, an additional input pin is created that controls whether the mipmaps should be generated in every frame or only when the texture instance changes, the default is `true`.
+
+```c
+[WantsMips("Texture0, MyTexture, ...")]
+shader Foo_TextureFX : TextureFX
+```
+
+## sRGB and Linear Color Space
+By default the rendering pipeline is set to linear color space. This is the correct color space for doing color math, such as blending and lighting. But almost all images are stored in non-linear sRGB color space because it allows for lower bit depths, hence smaller file sizes. To solve this, graphics APIs have low bit depth [pixel formats with the `_SRgb` suffix](https://github.com/stride3d/stride/blob/7e836297cb5930c01e6dfa0183e7f3cc64748fb6/sources/engine/Stride/Graphics/PixelFormatExtensions.cs#L590) to indicate that the pixel values are in sRGB color space.
+
+The (linear) graphics pipeline will automatically convert from sRGB to linear when a pixel is sampled from an sRGB texture and it will automatically convert from linear to sRGB when a pixel is written into an sRGB texture set as render target.
+
+However, if you copy shader code that was written for an legacy sRGB/non-linear pipeline (as DX9/DX11 in vvvv beta were), you might want to indicate that the input and output colors are in sRGB space.
+
+To do this, you can use two attributes that declare the read and write intent.
+* `[DontConvertToLinearOnRead]`, input should stay as sRGB. This can involve an internal copy of the texture if the resource is not typeless (i.e. is [strongly typed](https://docs.microsoft.com/en-us/windows/win32/direct3d11/overviews-direct3d-11-resources-intro#strong-vs-weak-typing)).
+* `[DontConvertToSRgbOnWrite]`, output is already sRGB.
+
+```c
+[DontConvertToLinearOnRead] //could involve a copy for each input texture
+[DontConvertToSRgbOnWrite] //almost cost free
+shader MySRgbFX_TextureFX : FilterBase
+{
+    float4 Filter(float4 tex0col)
+    {
+        tex0col.rgb = tex0col.rgb;
+        return tex0col;
+    }
+};
+```
+These attributes will only do something if the input textures or render target have the `_SRgb` suffix.
+
+Because there can be more than one input texture, it is also possible to specify a comma separated list of variable names of input textures to set the input attribute only for specific ones:
+```c
+[DontConvertToLinearOnRead("Texture0, MyTexture")]
+[DontConvertToSRgbOnWrite]
+shader MySRgbFX_TextureFX : FilterBase
+```
+## System Values and Shader Semantics
+If needed, [HLSL shader semantics](https://docs.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-semantics#system-value-semantics) can be used. 
+
+Many of those are already available in more human-readable terms inherited via the [ShaderBase](https://github.com/stride3d/stride/blob/master/sources/engine/Stride.Graphics/Shaders/ShaderBaseStream.sdsl).
+
+### Render Target Size
+A common requirement is the size of the render target, this is provided via the `ViewSize` variable. It describes the size of the current viewport, which is the full size of the render target for TextureFX:
+
+```c
+float2 targetSize = ViewSize;
+```
+### Time
+The current time and the frame time diffrence can be obtained by inheriting from the [Global shader](https://github.com/stride3d/stride/blob/master/sources/engine/Stride.Rendering/Rendering/Shaders/Global.sdsl) and using the `Time` and `TimeStep` variables. The values are automatically set by the runtime.
+
+```c
+shader MyBlinker_TextureFX : FilterBase, Global
+{
+    float4 Filter(float4 tex0col)
+    {
+        var blink = frac(Time) > 0.5;
+        tex0col.rgb = tex0col.rgb * blink;
+        return tex0col;
+    }
+};
+```
+
+---
+<!-- page: 3d/transparency.md -->
+
+# Transparency
+Transparency and 3d rendering with depthbuffer is a tricky topic that isn't completely solved for the general case. The only thing you can do is to find the right rendering technique that suits your specific setup.
+
+## Materials
+The Stride render system has a render stage for transparent objects. This render stage is called directly after the normal opaque stage. In the transparent stage objects that have a transparency feature connected to the material get rendered. These objects get automaticllay sorted from back to front, only read from the depth buffer and blend themselves over the scene with additive or alpha blending.
+
+There are 3 different transparency fetures: **Blend**, **Additive**, or **Cutoff**. See the 
+[Stride Material doc](https://doc.stride3d.net/4.0/en/manual/graphics/materials/misc-attributes.html#transparency) for a detailed description of these modes and their parameters. You can find the nodes for these material features in the node browser in the category `[Materials.MiscAttributes.Transparency]`.
+
+> [!NOTE]
+> If an object gets moved into the transparent render stage by the render system, it will not write into the depth buffer anymore. This means that it will not occlude other objects.
+
+## Custom rendering
+If you render your own custom shaders, you can control the blending and the interaction with the depth buffer via the nodes `BlendStateDescription` + `BlendStateRenderTargetDescription`  and `DepthStencilStateDescription`. The node RenderEntity also offers the possibility to specify the render stage, see [Rendering](rendering.md).
+
+There are also preconfigured blend states like `Additive`, `AlphaBlend` and `AlphaBlendPremultiplied` in the category `[BlendStateDescription]`.
+
+For further reading on this topic and the related problem, you can have a look at the [vvvv beta documentation](https://beta.vvvv.org/topics/graphics/direct3d-9/basics/transparency/transparency-and-depthbuffer.html).
+
+---
+<!-- page: 3d/virtual-reality.md -->
+
+# Virtual Reality (VR)
+
+## OpenXR 
+The default VR backend in VL.Stride shipping with vvvv.  
+
+Supported extensions:
+- Passthrough
+- HandTracking via [VL.Stride.OpenXRExtensions](https://www.nuget.org/packages/VL.Stride.OpenXRExtensions)
+
+## OpenVR
+Supported as alternative VR backend via VL.Stride shipping with vvvv.
+
+## Vive Trackers
+Use [Vive Trackers](https://www.vive.com/au/support/tracker3/category_howto/tracker.html) without HMD.  
+NuGet: [VL.IO.OpenVR](https://www.nuget.org/packages/VL.IO.OpenVR)
+
+---
+<!-- page: collections.md -->
+
+# Collections
+
+A large number of different collection types is shipping with the VL.CoreLib:
+
+## Sequence
+The base type for collections in VL is the _Sequence_. It corresponds to what is known as _IEnumerable_ in .NET world. We just gave it a more human-readable name.
+
+## Spread
+The Spread is a specialized sequence. The elements in a spread are called slices. When asking a spread with 4 slices for the slice with index 6, instead of complaining, it takes the index modulo its count, ie 4 mod 6 = 2 and returns the slice with index 2.
+
+## SpreadBuilder
+The SpreadBuilder is the mutable variant of the Spread for use in scenarios where performance counts. A typical scenario would be when slices need to be added/removed to/from a spread in a loop. In such a case use a SpreadBuilder to modify the spread and use ToSpread in the end to go back into the save immutable world.
+
+## Dictionary
+The Dictionary is a key-value collection. Items (values) are added to the dictionary given a label (key). Keys have to be unique and can therefore be used to retrieve individual values from the dictionary.
+
+The key is often a string, but can really be any other datatype.
+
+## HashSet
+
+Represents a set of values.
+
+---
+
+Enable the `Advanced` aspect in the nodebrowser to get access to many more collection types.
+
+---
+<!-- page: graphics-3d.md -->
+
+# 3d Graphics
+
+vvvv's 3d rendering engine VL.Stride is based on the [Stride 3d Engine](http://stride3d.net) and shipping with the installation. It allows for 2 distinct workflows:
+
+* A **high-level**, easy to use SceneGraph approach, where you build 3d scenes by simply adding models, and lights to a scene. Models can be given materials to define their look
+* A **low-level** approach, where you work with the graphics API directly
+
+Both workflows can be easily combined, see [Rendering](3d/rendering.md) for more details.
+
+ You you can write [shaders](3d/shaders.md) (vertex, pixel, geometry, compute) using the [Stride Shading Language](https://doc.stride3d.net/latest/en/manual/graphics/effects-and-shaders/shading-language/index.html) (an extension to HLSL) to customize your rendering in both workflows.
+
+A range of Post FX, like ambient occlusion, depth of field, bloom, etc. are available too. VL.Stride also allows you to output content to VR Devices.
+
+In general the [Stride Documentation](https://doc.stride3d.net/latest/en/) is useful for understanding key concepts of the engine.
+
+### Topics
+
+* [Rendering](3d/rendering.md)
+* [Models and Meshes](3d/models.md)
+* [Geometry](3d/geometry.md)
+* [Text rendering](../best-practice/text-rendering.md)
+* [Transparency](3d/transparency.md)
+* [Shaders](3d/shaders.md)
+* [All about TextureFX shaders](3d/texturefx.md)
+* [Editing shaders](3d/editing-shaders.md)
+* [Projection Mapping](projectionmapping.md)
+* [Graphics cards](3d/graphics-cards.md)
+  
+### Additional libraries
+
+See the [3d Graphics Category](https://vvvv.org/packs/?c=3d%20Graphics) in the packs browser. 
+
+### Useful tools
+* [Stride Shader Explorer](https://github.com/tebjan/Stride.ShaderExplorer) to browse available shaders to inherit from (requires also [Stride](https://stride3d.net/download/) to be installed)
+* [List of Material Editors](https://forum.vvvv.org/t/open-source-material-editor-material-creation-resource-list/19185)
+* [ALVR](https://github.com/alvr-org/ALVR) to stream VR content to headsets via Wi-Fi
+
+---
+
+For an alternative, very primitive wireframe 3d engine, see VL.Skia3d:
+NuGet: [VL.Skia3d](https://www.nuget.org/packages/VL.Skia3d)
+
+---
+<!-- page: json.md -->
+
+# JSON
+
+Instead of operating on a JSON object directly, in VL by default the JSON is converted to an XElement which can be easily inspected and modified. Vice versa, an XElement can always be converted to JSON.
+
+> [!NOTE]
+> If in an advanced use case you find yourself in a situation where this conversion from JSON to XElement is not feasible, you can still operate on JSON directly by referencing a library like [JSON.NET](https://www.newtonsoft.com/json), as described in [Using .NET Libraries](../extending/using-net-libraries.md).
+
+## Loading a JSON file
+
+Loading a file is potentially a time-consuming process and thus can interrupt your otherwise smooth framerate. VL therefore provides two options for file readers:
+
+* a simple to use, but blocking option
+* a non-blocking option that requires a few more clicks to set it up
+
+### Blocking
+Use the *JSONReader [System.XML]* node to read a .json file and get the result in the form of an XElement:
+
+![](../../images/libraries/json-37ff4.png)
+<center>The JSONReader loads a .json file and returns it as XElement instantly, potentially blocking the execution of the rest of the program</center>
+
+### Non-Blocking (Reactive)
+The simplest way to load a .json file asynchronously is to use the *JSONReader (Reactive) [System.XML]* in connection with a *HoldLatest [Reactive]*. Once the file is loaded, the HoldLatest will bang its __On Data__ output and return the files content as an XElement:
+
+![](../../images/libraries/json-3b519.png)
+<center>The JSONReader (Reactive) loads a .json file and returns it as XElement in a later frame, so that the rest of the program is not interrupted</center>
+
+But while you're in the reactive/asynchronous world, you can also do some further parsing to the file, by e.g. using the *ForEach [Reactive]*:
+
+![](../../images/libraries/json-1a150.png)
+<center>In addition to loading the file asynchronously, in this example the name of the root element is being extracted as a simple example. But obviously here you can do more expensive operations that would still not interrupt your framerate</center>
+
+Like this loading and parsing is done asynchronously and only when both is done, you get access to the result for further processing.
+
+## Parsing a JSON string
+
+If you have a string in JSON format then simply use the *ParseJSON [System.XML]* node to convert it into an XElement for further processing:
+
+![](../../images/libraries/json-890ce.png)
+
+## Saving a JSON file
+
+Saving a file is a potentially time-consuming process and thus can interrupt your otherwise smooth framerate. VL therefore provides two options for file writers:
+
+* a simple to use, but blocking option
+* a non-blocking option that requires a few more clicks to set it up
+
+### Blocking
+Use the *JSONWriter [System.XML]* node to write a given XElement into a .json file:
+
+![](../../images/libraries/json-10881.png)
+
+### Non-Blocking (Reactive)
+The simplest way to save a .json file asynchronously is to use the *JSONWriter (Reactive) [System.XML]* in connection with a *ToObservable [Reactive]*. Connect the XElement to the __Message__ input of the ToObservable node and bang its  __Send__ input to start the operation. Once saving is done, the __On Completed__ output of the JSONWriter will bang:
+
+![](../../images/libraries/json-bf0b4.png)
+
+But even creating the XElement structure could already be time-consuming so you could also off-load that part of your patch to the reactive world and do it only just before writing the file by e.g. using the *ForEach [Reactive]*:
+
+![](../../images/libraries/json-7c6e9.png)
+
+Like this creating the XElement and saving the file is done asynchronously and does not interrupt your framerate.
+
+## Converting an XElement to a string in JSON format
+
+If you have an XElement that you want to simply convert to a string in JSON format, use the *ToJSON [System.XML]* node:
+
+![](../../images/libraries/json-cba43.png)
+
+---
+<!-- page: on-demand.md -->
+
+# On Demand
+
+If you're missing support for a specific device or library, it can most certainly be added on demand. 
+
+vvvv's libraries are all [open-source](https://github.com/vvvv) and for programmers it is trivial to [extend](../extending/overview.md) them with custom sets of nodes. 
+
+We do offer priority support for your development requirements, please **[get in touch](mailto:devvvvs@vvvv.org)** to see if/how we can work things out together.
+
+Here some things you might be looking for:
+- Support for specific camera devices (e.g. [Ensenso](https://www.optonic.com/en/brands/ensenso/), [Ximea](https://www.ximea.com/), [FLIR (Point Grey,..)](https://ptgreycamera.com/product-category/camera/flir/) via [Spinnaker SDK](https://www.teledynevisionsolutions.com/products/spinnaker-sdk/?model=Spinnaker%20SDK&vertical=machine%20vision&segment=iis), ...)
+- Support for specific capture cards
+- Lidars
+  - [Ouster](https://ouster.com)
+  - [Sick](https://www.sick.com/)
+- Support for specific protocols
+- Lasers by [Laser Animation Sollinger](https://laseranimation.com/)
+- Support for [ShowNET Hardware](https://www.laserworld.com/de/software/shownet-hardware.html)
+- Support for specific [OpenXR Extensions](https://registry.khronos.org/OpenXR/specs/1.0/html/xrspec.html)
+- Planar Image Tracking and more via [EasyAR](https://www.easyar.com/)
+- VESA [MPCDI](https://vesa.org/featured-articles/vesa-completes-specifications-for-new-multiple-projector-common-data-interchange-standard-mpcdi/)
+- [Notch LC](https://notchlc.notch.one/) video Codec
+- [ProRes](https://support.apple.com/en-us/102207) video codec
+- [Python](https://github.com/pythonnet/pythonnet) scripting
+- [Crestron](https://www.crestron.com/)
+- Tracking
+  - [BlackTrax](https://cast-soft.com/blacktrax/)
+  - [Vicon](https://www.vicon.com/)
+  - [Captury](https://captury.com/)
+- NVIDIA [Rivermax](https://developer.nvidia.com/networking/rivermax)
+- Integrations
+  - [Disguise](https://www.disguise.one/) ([RenderStream](https://www.disguise.one/en/products/renderstream))
+  - [7th Sense](https://7thsense.one/)
+  - [Green Hippo](https://www.green-hippo.com/)
+  - [TouchDesigner](https://derivative.ca/) ([TouchEngine](https://docs.derivative.ca/TouchEngine))
+  - [Unreal Engine](https://www.unrealengine.com) 
+  - [Ventuz](https://www.ventuz.com/)
+  - [Brainsalt](https://www.brainsalt.com/)
+  - [Pixera](https://pixera.one/en/)
+ 
+  So if you're interested in any of the above, please [get in touch](mailto:devvvvs@vvvv.org).
+
+---
+<!-- page: overview.md -->
+
+# Libraries
+
+VL's functionality is structured into individual libraries, also known as NuGet packages or just "packs". Not all of them are shipping with vvvv, but they can easily be installed. Most of them are open-source and many of them are provided and maintained by your fellow vvvv users. For an overview of what's available, see: 
+
+The online browser for VL NuGets: **http://vvvv.org/packs**
+
+To learn how to use NuGets in vvvv refer to the documentation on [Managing NuGets](../hde/managing-nugets.md) or watch the [HowTo Use NuGets](https://youtu.be/-U_kUQ3VDog) video.
+
+## The VL.CoreLib
+
+The default library of VL that provides nodes and types for the most basic patching needs is called VL.CoreLib. Here is an overview of the Categories it adds to a document that references it.
+
+| Category | Content |
+|---|---|
+| 2D | 2d primitives like Vector2, Rectangle, Circle,... and 2d transformation and collision nodes. Further any 2d related math nodes.
+| 3D | 3d primitives like Vector3, Box, Sphere,... and 3d transformation and collision nodes. Further any 3d related math nodes.
+| Adaptive | Nodes that can operate on different datatypes, like a + [Adaptive] that can operate on numbers, strings, colors ... or a Length [Adaptive] that works for 2D and 3D vectors.
+| Animation | Timebased nodes like time-generators (LFO, Stopwatch, ...) and filters (Damper, Oscillator, ...). Also has a subcategory *FrameBased* that contains similar nodes that operate framebased instead.
+| [Collections](collections.md) | Contains most notably the Spread, but also other simple collections like the Sequence, Dictionary and HashSet.
+| Color | Contains the RGBA color type and operations to convert to/from different color spaces.
+| Control | Nodes to patch control flow, like FlipFlop, MonoFlop,...
+| IO | Mouse, Keyobard and Touch nodes as well as nodes for file IO, Path (directory, filename) and Networking
+| Math | General math, algorithms,...
+| Primitive | Contains the primitive datatypes, like Bool, Byte, Integer32/64 Float32/64, Char, String
+| [Reactive](reactive.md) | Nodes for reactive programming
+| System | [XML](xml.md), [JSON](json.md), DateTime, [Serialization](serialization.md), ...
+| Text | TypeWriter
+
+## Anything missing? 
+In case you find anything missing, here are a couple of options:
+- We do offer custom development, don't hesitate to [get in touch](mailto:devvvvs@vvvv.org)!
+- If you're familiar with textual coding it is rather trivial to [create your own libraries](../extending/overview.md)
+- Apart from libraries specifically made for vvvv, you can also [use almost any .NET library](../extending/using-net-libraries.md)
+- You may also find someone work-in-progress of people here:
+  - [WIP section](https://forum.vvvv.org/c/wip/27) of the vvvv forum
+  - [Repos tagged with VL](https://github.com/topics/vl) on GitHub
+
+---
+<!-- page: reactive.md -->
+
+# Reactive
+
+The Reactive category gives you tools to handle asynchronous events, background calculations and even enables you to build your own mainloop that runs on a different CPU core.
+
+## Processing Events
+The go to node for handling events is the _ForEach Region_ in the category _Reactive_. This region allows you to place any node inside and can also remember any data between two events. There is also one with version _Keep_ that can filter out events using a boolean output. This region is very similar to the ForEach region for spreads, only that its input and output is event values in time instead of slices of a spread.
+
+![](../../images/libraries/vl-libraries-reactive-refreshEvery30secInBackground.PNG)
+<center>Refresh web data every 30 seconds in the background and pass the result on to the mainloop</center>
+
+### Switching or merging event sources
+
+![](../../images/libraries/vl-libraries-reactive-switchingAndMerging.PNG)
+<center>Switching or merging midi events</center>
+
+### Filtering
+
+There are also filtering options with _OfType_ or _Where_:
+
+![](../../images/libraries/vl-libraries-reactive-onlyGetTouchDown.PNG)
+<center>Only get TouchDown events from a combined event stream</center>
+
+Other nodes include
+
+* Skip,
+* Delay,
+* Delay (Selector),
+* Scan,
+* Switch, ...
+
+## Receiving Events
+
+If you want to leave the observable world and pass event values to the mainloop use one of the 3 nodes
+
+* HoldLatest: Returns always the latest value
+* Sampler: Returns all event values since the last frame, can be empty
+* S+H: Same as _Sampler_ but returns the same values until the next event occurs
+
+which all behave a little bit different. Depends on what you need:
+
+![](../../images/libraries/vl-libraries-reactive-3waysToGetEventValuesToMainloop.PNG)
+<center>Three ways to get event values to the mainloop</center>
+
+## Creating Events
+It's also easy to generate event sources of your own:
+
+![](../../images/libraries/vl-libraries-reactive-waysToCreateObservableSources.PNG)
+<center>Different ways to create observable event sources</center>
+
+> [!NOTE]
+> Only send values of type Record as event data because they are thread safe. If you send values of any Class type be sure that you know exactly what you are doing!
+
+---
+<!-- page: referencing.md -->
+
+# Referencing Libraries
+
+VL Documents can reference 3 different types of dependencies:
+
+* VL Nugets
+* .NET Nugets
+* Files
+
+When a document references a dependency, it means that all public nodes in that dependency will be available to it via the [NodeBrowser](../hde/the_nodebrowser.md).
+
+## Nugets
+[NuGet](https://www.nuget.org) is the package managing system for .NET. Nugets are packages that can contain many .dll and/or .vl files that expose nodes to the referencing document.
+
+For installing nugets, see [Managing Nugets](../hde/managing-nugets.md).
+
+### VL vs. .NET Nugets
+A VL Nuget is a nuget specifically created for use with vl that won't work for any other [.NET language](https://en.wikipedia.org/wiki/List_of_CLI_languages). It is still a valid nuget in the original terms of NuGet but since it contains .vl documents it will not be useable outside of vl.
+
+A .NET Nuget on the other hand is more generally targetting any .NET language.
+
+You can reference either VL or .NET nugets via the menu by navigating to it and pressing the right mousebutton to toggle its selection:
+
+![](../../images/libraries/vl-Dependencies-Nuget.png)
+<center>Rightclick toggles adding/removing a nuget reference</center>
+
+### Missing Nugets
+If a nuget that is referenced by a document cannot be found,  it will be listed in red in the Dependencies menu. In such a case a rightclick on a red entry allows you to:
+
+* *Install*: attempt to install from nuget.org. This will obviously only work if the nuget can be found online
+* *Remove Reference*: remove this nuget as a dependency of this document
+
+Note that you can rightlclick to select multiple red entries and then choose to apply either install or remove to all of them at once.
+
+![](../../images/libraries/vl-Dependencies-MissingNuget.png)
+<center>Missing nuget options</center>
+
+### Unmanaged/Native dependencies
+Some nugets are shipping with or depending on unmanaged/native .dlls which cannot be picked up by vl automatically since there isn't a pattern in the nuget specification as to how those should be handled. So in order to get such unmanaged dependencies of a nuget picked up, for now you'll have to add a search-path for vl via a batch file, like so:
+
+    SET PATH=%PATH%;c:\path\to\nugets\nativelibs;
+    vvvv.exe
+
+## Files
+A vl document can reference other .vl documents and managed .dll files.
+
+### From Disk
+Here are 3 ways to reference local files:
+
+* Press <span class="keyseq"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>E</kbd></span> to select files via a file browser
+* Via `Document > Dependencies > Files > Add Existing...`
+* Via `Document > Dependencies > Files > Add New`
+
+![](../../images/libraries/vl-Dependencies-File.png)
+<center>Add existing File as dependency</center>
+
+#### Missing Files
+Files that are showing up in red cannot be found on disk. You can rightclick to remove or replace their reference. 
+
+#### Removing or Replacing Files
+You can rightclick a file reference to remove or replace it. Note that you can also rightclick to select multiple files in a row and then apply "Remove" to all of them at once.
+
+![](../../images/libraries/vl-Dependencies-File-Remove.png)
+<center>Remove files</center>
+
+#### Duplicate reference warning
+
+When referencing a .dll you may encounter a warning similar to the following warning:
+
+![](../../images/libraries/duplicate-reference-warning.png)
+
+The warning pops up because a file with the same name is already loaded by vvvv. 
+
+There are two situations in which this may occur:
+1) Changing the location from which to load a .dll:  
+You've set a reference to the .dll before but have since moved it to a different location on disk and now want to fix the reference to that new position. 
+
+2) Referencing a .dll that vvvv itself has already loaded:  
+You're setting a reference to a .dll in one location but a .dll with the same name has already been loaded from another location, most likely by vvvv itself. 
+
+If you are certain that those are actually the same files, only in a different location, then you can ignore the warning. 
+
+Otherwise in case 1) restarting vvvv should help, but in case 2) you'll actually not have a chance to get this solved. .dlls loaded by vvvv cannot be changed at all. If for some reason you need to use a newer version of a .dll than the one vvvv is currently using, please start a thread on the [forum](https://forum.vvvv.org) about this and we'll see what we can do. 
+
+### Libraries from the GAC (Global Assembly Cache)
+
+By default .NET comes with a large number of assemblies that can be referenced. They are stored in the [GAC](https://docs.microsoft.com/en-us/dotnet/framework/app-domains/gac) on all machines that have .NET installed and can be referenced from there via:
+
+* Press <span class="keyseq"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>E</kbd></span>
+* via `Document > Dependencies > Files > Add .NET Framework Assembly...`
+
+In the dialog you need to double-click entries that you want to add as references.
+
+![](../../images/libraries/vl-libraries-using-GACWindow.png)
+<center>Use <span class="keyseq"><kbd>Ctrl</kbd><kbd>F</kbd></span> in this window to find libraries in the GAC</center>
+
+---
+<!-- page: serialization.md -->
+
+# Serialization and Deserialization
+
+*Serialization is the process of translating data structures into a format (text or series of bytes) that can be stored (for example, in a file) or transmitted (for example, across a network) and reconstructed later. The opposite operation, extracting a data structure from a serialized format, is called deserialization.*
+
+via [Wikipedia](https://en.wikipedia.org/wiki/Serialization)
+
+## Common Formats
+
+There are many ways this can be done but there are three commonly used text formats for serialization, called [XML](https://en.wikipedia.org/wiki/XML), [JSON](https://en.wikipedia.org/wiki/JSON) and [CSV](https://en.wikipedia.org/wiki/Comma-separated_values). While binary formats are typically smaller, which results in faster read/write times, the advantage of text formats is human readability which helps with debugging and version-control. When interacting with the web it is common to choose JSON as this can be easily parsed and created from java-script.
+
+## Automatic
+When you need to send data-structures from one instance of your application to another over a network and the data does not have to be saved to disk, chances are that you don't care about the actual format.
+
+In this case you can use one of the runtime serializers provided that can serialize most datatypes directly without the need for building an extra data-structure for serialization. While this is quick and easy, it comes at the cost of not having any control over the format and thus may have some overhead in the formats size, as the serialization process may include data that you'd not even need to serialize. 
+
+For serialization to XElement (ie. XML) best use the nodes from the `System.Serialization` category: 
+* Serialize -> XElement -> Deserialize
+* Serialize (Log Errors) [Advanced] -> XElement -> Deserialize (Log Errors)
+
+Further, the following nodes from the package `VL.Serialization.FSPickler` can be used:
+
+* Serialize (XML) -> String -> Deserialize (XML)
+* Serialize (JSON) -> String -> Deserialize (JSON)
+* Serialize (Binary) -> MutableArray of Byte -> Deserialize (Binary) 
+
+> [!NOTE]
+> The serialized format these nodes generate is "volatile" in a sense that it may not be compatible between different versions of VL.
+>
+> Also: Deserializing JSON or XML that was not generated with the corresponding Serialize nodes will fail, if the individual attributes are not ordered alphabetically! This is a peculiarity of FsPickler and we'll therefore probably have to replace it at some point. Meanwhile you may want to have a look at using nodes from the [Json.NET](https://www.newtonsoft.com/json) library for such cases.
+
+In case you want to learn more about the inner workings of those nodes, check the documentation of the [FSPickler](https://mbraceproject.github.io/FsPickler/) library on which they are based on.
+
+**image: example MyType automatically serialized and deserialized**
+
+## Manual
+When you're saving the state of a program to disk, you may want think about different versions of your file-format because the data-structure you're saving may evolve over time and you may still want your application to be able to load files saved with earlier versions.
+
+In this case you'll want to define the format yourself as it is then in your hand to change the format whenever needed, adapt the serialization and deserialization process accordingly and have the option to retain backwards-compatibility by providing different de/serializers for different versions of your format.
+
+### Custom Serialization
+The following nodes allow you to build data-structures
+
+* XElement (Join) [XML]
+* XAttribute (Join) [XML]
+
+that can then be serialized to a string format using:
+
+* ToJSON [XML]
+* ToString [XML]
+
+or can be directly saved to disk using:
+
+* FileWriter (JSON) [IO]
+* FileWriter (XML) [IO]
+
+Building an extra data-structure that is only used for serialization is an overhead but also has the advantage that you can leave things out that you don't need to serialize and define exactly how the resulting format will look like.
+
+**image: example data-structure and its serialization as XML and JSON strings**
+
+### Custom Deserialization
+
+The following nodes allow you to read JSON or XML files from disk:
+
+* FileReader (JSON) [IO]
+* FileReader (XML) [IO]
+
+or parse JSON or XML strings into a an XElement structure:
+
+* ParseJson [XML]
+* Parse [XML]
+
+Then use the following nodes to access individual fields of the data-structure:
+
+* XElement (Split) [XML]
+* XAttribute (Split) [XML]
+* XElementsByName [XML]
+* XPathSelectElement [XML]
+* XPathSelectElements [XML]
+* XPathEvaluate [XML]
+
+**image: deserializing a given example json/xml**
+
+---
+<!-- page: xml.md -->
+
+# XML
+
+The datatype for handling XML data in VL is called *XElement*.
+
+In the nodebrowser explore the category *System.XML* to get an overview of all the nodes available for operating on XElements.
+
+The examples on this page refer to the following XML structure:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<entries>
+  <entry visible="true" >
+    <id>1</id>
+    <label>Foo</label>
+    <description>A Thing</description>
+    <speed>2.4</speed>
+  </entry>
+  <entry visible="false">
+    <id>2</id>
+    <label>Bar</label>
+    <description>Another Thing</description>
+    <speed>4.2</speed>
+  </entry>
+</entries>
+```
+
+## Extracting data from an XElement using XPath queries
+
+General information about XPath can be found at W3CSchools: [XML and XPath](https://www.w3schools.com/xml/xml_xpath.asp)
+
+Each XElement can have:
+
+* a value
+* a list of XAttributes
+* a list of child XElements
+
+Referring to the example above:
+
+* the value of the first "label" element is "Foo"
+* the element "entry" has one attribute with the name "visible". the value of the first entry's "visible" attribute is "true"
+* the child elements of the "entry" element are: "id", "label", "description" and "speed"
+
+### Accessing an element's value
+
+To access the value of only the first occurrence of an element, use the *XPathGetValue [System.XML]* node:
+
+![](../../images/libraries/xml-1a41f.png)
+<center>The first XPathGetValue node is grayed out (ie. not in use), because it does not yet have anything connected to its output. The second node has an IOBox connected that is configured to type 'String' which tells the XPathGetValue node to interpret the XElements value as a string</center>
+
+To get the values of all occurrences of an element, use the *XPathGetValues [System.XML]* node:
+
+![](../../images/libraries/xml-a7e85.png)
+<center>XPathGetValues returns the values of all queried elements as spread of whatever type is connected</center>
+
+### Accessing an element's attributes
+
+To access an attribute of only the first occurrence of an element, use the  *XPathGetAttributeValue [System.XML]* node:
+
+![](../../images/libraries/xml-cc084.png)
+<center>The first XPathGetAttributeValue node is grayed out (ie. not in use), because it does not yet have anything connected to its output. The second node has an IOBox connected that is configured to type 'Boolean' which tells the XPathGetAttributeValue node to interpret the XElements value as a boolean</center>
+
+To get the attributes of all occurrences of an element, use the *XPathGetAttributeValues [System.XML]* node:
+
+![](../../images/libraries/xml-028d5.png)
+<center>XPathGetAttributeValues returns the values of all queried attributes as spread of whatever type is connected</center>
+
+

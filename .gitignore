@@ -1,0 +1,10 @@
+/.vscode/mcp.json
+/.vscode/settings.json
+/src/VvvvMcp/bin/
+/src/VvvvMcp/obj/
+/VVVVNodeAnalyzer/obj/
+/VVVVNodeAnalyzer/bin/
+/src/VvvvMcp.Tests/obj/
+/src/VvvvMcp.Tests/bin/
+/src/VvvvMcp.Core/obj/
+/src/VvvvMcp.Core/bin/

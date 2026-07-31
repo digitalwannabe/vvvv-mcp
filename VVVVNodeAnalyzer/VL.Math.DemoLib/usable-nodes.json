@@ -1,0 +1,973 @@
+{
+  "libraryName": "VL.Math.DemoLib",
+  "version": "Unknown",
+  "description": "No package information found",
+  "extractionDate": "2025-06-30T10:16:11.0161055+02:00",
+  "nodes": [
+    {
+      "name": "MyGenericOperation",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.MyGenericOperation",
+      "type": "Operation",
+      "summary": "",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": true,
+      "hasState": false,
+      "inputs": [],
+      "outputs": [],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "MyGenericPad",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleGenericClass.MyGenericPad",
+      "type": "Getter",
+      "summary": "Gets the MyGenericPad property",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": true,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "Input",
+          "type": "SimpleGenericClass",
+          "summary": "Instance of SimpleGenericClass",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MyGenericPad",
+          "type": "Object",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "MyGenericProcess",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.MyGenericProcess",
+      "type": "Process",
+      "summary": "",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": true,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "Input",
+          "type": "Object",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        },
+        {
+          "name": "Input 2",
+          "type": "Object",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Output",
+          "type": "Object",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "MyOperation",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.MyOperation",
+      "type": "Operation",
+      "summary": "",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": false,
+      "hasState": false,
+      "inputs": [],
+      "outputs": [],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "MyOtherPad",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleGenericClass.MyOtherPad",
+      "type": "Getter",
+      "summary": "Gets the MyOtherPad property",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": true,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "Input",
+          "type": "SimpleGenericClass",
+          "summary": "Instance of SimpleGenericClass",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MyOtherPad",
+          "type": "String",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "MyPad",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleGenericClass.MyPad",
+      "type": "Getter",
+      "summary": "Gets the MyPad property",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": true,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "Input",
+          "type": "SimpleGenericClass",
+          "summary": "Instance of SimpleGenericClass",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MyPad",
+          "type": "Boolean",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "MyProcess",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.MyProcess",
+      "type": "Process",
+      "summary": "",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": false,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "Input",
+          "type": "Object",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        },
+        {
+          "name": "Input 2",
+          "type": "Object",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Output",
+          "type": "Float32",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "SetFromLFO",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleClass.SetFromLFO",
+      "type": "Method",
+      "summary": "",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": false,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "Period",
+          "type": "Object",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "SetMyGenericPad",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleGenericClass.SetMyGenericPad",
+      "type": "Setter",
+      "summary": "Sets the MyGenericPad property",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": true,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "Input",
+          "type": "SimpleGenericClass",
+          "summary": "Instance of SimpleGenericClass",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        },
+        {
+          "name": "MyGenericPad",
+          "type": "Object",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Output",
+          "type": "SimpleGenericClass",
+          "summary": "Modified instance of SimpleGenericClass",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "SetMyOtherPad",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleGenericClass.SetMyOtherPad",
+      "type": "Setter",
+      "summary": "Sets the MyOtherPad property",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": true,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "Input",
+          "type": "SimpleGenericClass",
+          "summary": "Instance of SimpleGenericClass",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        },
+        {
+          "name": "MyOtherPad",
+          "type": "String",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Output",
+          "type": "SimpleGenericClass",
+          "summary": "Modified instance of SimpleGenericClass",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "SetMyPad",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleGenericClass.SetMyPad",
+      "type": "Setter",
+      "summary": "Sets the MyPad property",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": true,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "Input",
+          "type": "SimpleGenericClass",
+          "summary": "Instance of SimpleGenericClass",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        },
+        {
+          "name": "MyPad",
+          "type": "Boolean",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Output",
+          "type": "SimpleGenericClass",
+          "summary": "Modified instance of SimpleGenericClass",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "SetSomeOtherPad",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleRecord.SetSomeOtherPad",
+      "type": "Setter",
+      "summary": "Sets the SomeOtherPad property",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": false,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "Input",
+          "type": "SimpleRecord",
+          "summary": "Instance of SimpleRecord",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        },
+        {
+          "name": "SomeOtherPad",
+          "type": "String",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Output",
+          "type": "SimpleRecord",
+          "summary": "Modified instance of SimpleRecord",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "SetSomeOtherPad",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleClass.SetSomeOtherPad",
+      "type": "Setter",
+      "summary": "Sets the SomeOtherPad property",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": false,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "Input",
+          "type": "SimpleClass",
+          "summary": "Instance of SimpleClass",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        },
+        {
+          "name": "SomeOtherPad",
+          "type": "String",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Output",
+          "type": "SimpleClass",
+          "summary": "Modified instance of SimpleClass",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "SetSomeOtherPad",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleClassAsProcess.SetSomeOtherPad",
+      "type": "Setter",
+      "summary": "Sets the SomeOtherPad property",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": false,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "Input",
+          "type": "SimpleClassAsProcess",
+          "summary": "Instance of SimpleClassAsProcess",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        },
+        {
+          "name": "SomeOtherPad",
+          "type": "String",
+          "summary": "another example pad as string",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Output",
+          "type": "SimpleClassAsProcess",
+          "summary": "Modified instance of SimpleClassAsProcess",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "SetSomePad",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleRecord.SetSomePad",
+      "type": "Setter",
+      "summary": "Sets the SomePad property",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": false,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "Input",
+          "type": "SimpleRecord",
+          "summary": "Instance of SimpleRecord",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        },
+        {
+          "name": "SomePad",
+          "type": "Boolean",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Output",
+          "type": "SimpleRecord",
+          "summary": "Modified instance of SimpleRecord",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "SetSomePad",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleClass.SetSomePad",
+      "type": "Setter",
+      "summary": "Sets the SomePad property",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": false,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "Input",
+          "type": "SimpleClass",
+          "summary": "Instance of SimpleClass",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        },
+        {
+          "name": "SomePad",
+          "type": "Boolean",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Output",
+          "type": "SimpleClass",
+          "summary": "Modified instance of SimpleClass",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "SetSomePad",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleClassAsProcess.SetSomePad",
+      "type": "Setter",
+      "summary": "Sets the SomePad property",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": false,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "Input",
+          "type": "SimpleClassAsProcess",
+          "summary": "Instance of SimpleClassAsProcess",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        },
+        {
+          "name": "SomePad",
+          "type": "Boolean",
+          "summary": "just some example boolean",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Output",
+          "type": "SimpleClassAsProcess",
+          "summary": "Modified instance of SimpleClassAsProcess",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "SimpleClass",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleClass",
+      "type": "Class",
+      "summary": "",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": false,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "SomePad",
+          "type": "Boolean",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        },
+        {
+          "name": "SomeOtherPad",
+          "type": "String",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Output",
+          "type": "SimpleClass",
+          "summary": "Instance of SimpleClass",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "SimpleClassAsProcess",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleClassAsProcess",
+      "type": "Class",
+      "summary": "this patch shows a simple class used as process node",
+      "remarks": "the patch itslef doesnt do much",
+      "tags": [
+        "demo",
+        "lib",
+        "example",
+        "pads"
+      ],
+      "isGeneric": false,
+      "hasState": true,
+      "inputs": [
+        {
+          "name": "SomePad",
+          "type": "Boolean",
+          "summary": "just some example boolean",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        },
+        {
+          "name": "SomeOtherPad",
+          "type": "String",
+          "summary": "another example pad as string",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Output",
+          "type": "SimpleClassAsProcess",
+          "summary": "Instance of SimpleClassAsProcess",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "SimpleGenericClass",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleGenericClass",
+      "type": "Class",
+      "summary": "",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": true,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "MyPad",
+          "type": "Boolean",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        },
+        {
+          "name": "MyOtherPad",
+          "type": "String",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        },
+        {
+          "name": "MyGenericPad",
+          "type": "Object",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Output",
+          "type": "SimpleGenericClass",
+          "summary": "Instance of SimpleGenericClass",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "SimpleRecord",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleRecord",
+      "type": "Record",
+      "summary": "",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": false,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "SomePad",
+          "type": "Boolean",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        },
+        {
+          "name": "SomeOtherPad",
+          "type": "String",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Output",
+          "type": "SimpleRecord",
+          "summary": "Instance of SimpleRecord",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "SomeOtherPad",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleRecord.SomeOtherPad",
+      "type": "Getter",
+      "summary": "Gets the SomeOtherPad property",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": false,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "Input",
+          "type": "SimpleRecord",
+          "summary": "Instance of SimpleRecord",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SomeOtherPad",
+          "type": "String",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "SomeOtherPad",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleClass.SomeOtherPad",
+      "type": "Getter",
+      "summary": "Gets the SomeOtherPad property",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": false,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "Input",
+          "type": "SimpleClass",
+          "summary": "Instance of SimpleClass",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SomeOtherPad",
+          "type": "String",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "SomeOtherPad",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleClassAsProcess.SomeOtherPad",
+      "type": "Getter",
+      "summary": "Gets the SomeOtherPad property",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": false,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "Input",
+          "type": "SimpleClassAsProcess",
+          "summary": "Instance of SimpleClassAsProcess",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SomeOtherPad",
+          "type": "String",
+          "summary": "another example pad as string",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "SomePad",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleRecord.SomePad",
+      "type": "Getter",
+      "summary": "Gets the SomePad property",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": false,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "Input",
+          "type": "SimpleRecord",
+          "summary": "Instance of SimpleRecord",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SomePad",
+          "type": "Boolean",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "SomePad",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleClass.SomePad",
+      "type": "Getter",
+      "summary": "Gets the SomePad property",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": false,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "Input",
+          "type": "SimpleClass",
+          "summary": "Instance of SimpleClass",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SomePad",
+          "type": "Boolean",
+          "summary": "",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    },
+    {
+      "name": "SomePad",
+      "category": "VL.Math.Demolib",
+      "fullName": "VL.Math.Demolib.SimpleClassAsProcess.SomePad",
+      "type": "Getter",
+      "summary": "Gets the SomePad property",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": false,
+      "hasState": false,
+      "inputs": [
+        {
+          "name": "Input",
+          "type": "SimpleClassAsProcess",
+          "summary": "Instance of SimpleClassAsProcess",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SomePad",
+          "type": "Boolean",
+          "summary": "just some example boolean",
+          "defaultValue": "",
+          "isOptional": false,
+          "isGeneric": false
+        }
+      ],
+      "source": "VL.Math.DemoLib.vl"
+    }
+  ],
+  "categories": [
+    "VL.Math.Demolib"
+  ],
+  "totalNodes": 27,
+  "nodesByType": {
+    "Operation": 2,
+    "Getter": 9,
+    "Process": 2,
+    "Method": 1,
+    "Setter": 9,
+    "Class": 3,
+    "Record": 1
+  }
+}

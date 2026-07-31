@@ -1,0 +1,583 @@
+﻿<!-- gray-book section: Best Practice -->
+# Gray Book — Best Practice
+
+> Source: https://thegraybook.vvvv.org/ (CC-licensed)
+
+---
+<!-- page: overview.md -->
+
+# Best Practice
+Here is a list of best-practice articles on various topics:
+
+## General
+* [Running vvvv on an Arm CPU](vvvv-on-arm.md)
+* [Running vvvv on a Mac](vvvv-on-mac.md)
+
+## 3d Rendering
+* [Text Rendering](text-rendering.md)
+
+## Video
+* [Capturing video input](video-capture.md)
+* [Playing back video](video-playback.md)
+* [Video synchronization](video-synchronization.md)
+* [Recording output as video](video-recording.md)
+
+## Development
+* [Deploying to a Raspberry Pi](raspberry-pi.md)
+* [Version control using Git](version-control.md)
+
+---
+<!-- page: ptp.md -->
+
+# Synchronizing machines to the High Precision Clock
+
+Starting from Windows10 (build) window's System Time can be synchronized to a High Precision Time Sourse that uses [PTP](https://de.wikipedia.org/wiki/Precision_Time_Protocol) (Precision Time Protocol). PTP is more precise than NTP (Network Time Protocol), which is used in Windows by default sync its time.
+
+## Overview
+
+There needs to be at least one PTP Source in your LAN Network. In case there are multiple, they agree among each other who the `Grandmaster` is. 
+
+## Configure Windows as a PTP client
+
+Configuring PTP on the system takes several steps:
+
+1. Make sure the system has this dll: `C:\Windows\System32\ptpprov.dll`.
+1. Check if one of the systems LAN cards (Wi-Fi won't work) support PTP: 
+    1. Navigate to `View Network Connections > Right Click > Properties > Configure > Advanced`.
+    1. Look for `PTP Protocol Timestamp` and enable it. Some network cards don't support it at all.
+    1. If the system has multiple cards, the one with PTP Enabled must be assigned as the preffered one, in order to be picked by the time service: In the `Properties` of the Network Adapter: `Internet Protocol Version 4 (TCP/IPv4) > Properties > Advanced` turn off `Automatic metric` and set it to a value, smaller than for the other cards. 
+1. Run registry file (link) to set several keys:
+    1. A key `PtpClient` (Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\w32time\TimeProviders\PtpClient) with some subkeys is added, as described [here](https://techcommunity.microsoft.com/blog/networkingblog/windows-subsystem-for-linux-for-testing-windows-10-ptp-client/389181). **Note**, you have to set `PtpMasters` key to the IP(s) of your ptp time providers.
+    2. Some subkeys under a `Config` key (Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\w32time\TimeProviders\Config) are updated, as described in [Configuring Systems for High Accuracy](https://learn.microsoft.com/en-us/windows-server/networking/windows-time-service/configuring-systems-for-high-accuracy).
+    1. The NtpClient will be disabled, only PtpClient remains enabled.
+1. Enable Inbound and Outbound UDP Ports 319 and 320 in Windows Firewall. These are used by the PTP protocol.
+
+When the configuration is ready:
+
+1. Start `Command Line` as Adminitrator
+1. Restart the time service: `net stop w32time && net start w32time`
+1. Make sure that the service starts automatically on start (check `System Services`)
+1. Run `w32tm /query /configuration`, you should see PtPClient in the list
+1. Run `w32tm /query /status /verbose` to see the status of the sync. If `Source` says `Local CMOS Clock` the system doesn't yet sync to PTP.
+
+It takes some time until the client and server have negotiated a sync. Checking `w32tm /query /status /verbose` will give you hints how many seconds ago the system was synced etc.
+
+For more about Windows Time Service:
+
+- [Windows Time Service](https://learn.microsoft.com/en-us/windows-server/networking/windows-time-service/how-the-windows-time-service-works)
+- [Service Tools and Settings](https://learn.microsoft.com/en-us/windows-server/networking/windows-time-service/windows-time-service-tools-and-settings?tabs=config)
+- [Registry keys and Firewall configs](https://github.com/microsoft/W32Time/tree/master/Precision%20Time%20Protocol/Windows%20Configuration%20Helpers)
+
+### Configuration of a Server (Ptp Time Source)
+
+Although there are special hardware PTP Sources, PTP Source Service can run from on a simple Raspberry Pi 5 (Network Card on the earlier versions doesn't support PTP). And if a real high precision time is needed, a GPS receiver could be added to the Raspberry Pi.
+
+These articles describe how to setup and run PTP Service on Linux:
+
+- [Nanosecond accurate PTP server](https://austinsnerdythings.com/2025/02/18/nanosecond-accurate-ptp-server-grandmaster-and-client-tutorial-for-raspberry-pi/)
+- [Windows Subsystem for Linux for testing Windows 10 PTP Client](https://techcommunity.microsoft.com/blog/networkingblog/windows-subsystem-for-linux-for-testing-windows-10-ptp-client/389181)
+- Multicast / Unicast [PTPd Config examples](https://github.com/Microsoft/W32Time/tree/master/Precision%20Time%20Protocol/PTPd%20Configuration%20Examples)
+
+## Unicast and Multicast scenarios
+
+...
+
+---
+<!-- page: raspberry-pi.md -->
+
+# Deploying to a Raspberry Pi
+
+As of [version 5.0](../../changelog/5.x.md) you can now [export](../hde/exporting.md) console apps to Linux, which makes the [Raspberry Pi](https://www.raspberrypi.com/) an excellent target. 
+
+In the [Application Exporter](../hde/exporting.md) then specify:
+- Output type: Console Application
+- Target: Linux
+
+## Deployment modes
+As explained in [Deploy .NET apps on ARM single-board computers](https://learn.microsoft.com/en-us/dotnet/iot/deployment#deploying-a-framework-dependent-app) there are two modes of deploymnet:
+
+### Framework dependent
+This is the default used by the Exporter. It requires you to [install .NET on the Raspberry Pi](https://learn.microsoft.com/en-us/dotnet/iot/deployment#deploying-a-framework-dependent-app) (Follow steps 1. and 2.) in order to be able to run the export on it. 
+
+After a successful export, copy the generated files over to the PI and there on a commandline run the program by typing:
+
+``dotnet myprogram.dll``
+
+### Self-contained
+Using this option will not require you to install .NET!
+
+Run the export normally once, then press the "Show Details" button. At the very top you'll see a line looking like this:
+
+``dotnet publish -c Release --self-contained false /clp:ErrorsOnly /nologo PathToYourProject.csproj"``
+
+Copy this, open a Command prompt and run the command modified like this:
+
+``dotnet publish -c Release -r linux-arm --self-contained true /clp:ErrorsOnly /nologo PathToYourProject.csproj"``
+
+Use ``-r linux-arm`` for 32bit Raspberry Pi OS or ``-r linux-arm64`` for the 64bit Version.
+
+After a successful export, copy the generated files over to the PI and there on a commandline set execute permissions on the executable:
+
+``chmod +x myprogram``
+
+and then run it:
+
+``./myprogram``
+
+## Automatic deployment of files
+Copying the files over to the PI after every build can be automated. In the Exporter UI press ``Advanced build configuration`` and add the following lines inside the ``<Project>`` tag: 
+
+```xml
+<PropertyGroup>    
+  <SourceFolder>PATH-TO-YOUR-PROJECTS-EXPORT-FOLDER</SourceFolder>
+  <DestFolder>PATH-TO-YOUR-DESTINATION-FOLDER-ON-THE-PI</DestFolder>
+</PropertyGroup>
+
+<ItemGroup>
+  <FilesToCopy Include="$(SourceFolder)\**" />
+</ItemGroup>
+
+<Target Name="Deploy" AfterTargets="Publish">
+  <!-- copy all files from the source folder to the dest folder that are newer or don't exist in the dest folder -->
+  <Message Importance="High" Text="Copying files to Raspberry PI..." />
+  <Copy SourceFiles="@(FilesToCopy)" DestinationFiles="@(FilesToCopy->'$(DestFolder)\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="True">
+    <Output TaskParameter="CopiedFiles" ItemName="Copied" />
+  </Copy>
+    
+  <ItemGroup>
+    <OutdatedFiles Include="$(DestFolder)\**" Exclude="@(Copied)" />
+  </ItemGroup>
+  <Message Importance="High" Text="Deleting files..." />
+  <Delete Files="@(OutdatedFiles)" />
+</Target>
+```
+
+Specify ``SourceFolder`` and ``DestFolder``. Then this will copy modified files over to the PI after every build.
+
+## Autostart
+To have your application autostart when starting the Pi, you need to install it as a service (other options like rc.local or a .desktop file don't seem to work).
+
+For installing a service, refer to chapter "4.4 Using A Systemd Service" of [boot.pdf](https://github.com/thagrol/Guides/blob/main/boot.pdf).
+
+### Pitfalls
+- If your program is accessing files, make sure to set the ``WorkingDirectory`` to where your application resides on disk
+- ``ExecStart`` needs to have absolut paths to both "dotnet" and your application. eg.: ``/home/pi/.dotnet/dotnet /home/pi/MyApp/myapp.dll`` 
+
+### Map Pi as network drive
+To map your Pi users home directory to the Z drive on your windows machine, in a command prompt run:  
+
+``net use Z: \\[hostname]\[username]``
+
+## Useful NuGets
+- [System.Device.Gpio](https://www.nuget.org/packages/System.Device.Gpio): for GPIO, I2C, SPI, PWM, Serial port
+- [Iot.Device.Bindings](https://www.nuget.org/packages/Iot.Device.Bindings): for higher-level specific device support
+- [VL.IO.RCP](https://www.nuget.org/packages/VL.IO.RCP) for remote controlling parameters of the application from a web browser
+- Any of the libraries in the [IO](../libraries/io.md) category
+- [SFML.Net](https://www.nuget.org/packages/SFML.Net): for audio playback and recording (NOTE: version 2.5.0 of the NuGet has audio recording broken. Compile yourself [from sources](https://github.com/SFML/SFML.Net) to get this working)
+
+## Useful links
+- [Setup Raspberry Pi SSH Keys for Authentication](https://pimylifeup.com/raspberry-pi-ssh-keys/)
+- [.NET IoT Libraries documentation](https://learn.microsoft.com/en-us/dotnet/iot/)
+- [Debug .NET apps on Raspberry Pi](https://learn.microsoft.com/en-us/dotnet/iot/debugging?source=recommendations)
+
+---
+<!-- page: text-rendering.md -->
+
+# Text rendering
+
+## 2d Graphics
+For [VL.Skia](../libraries/graphics-2d.md) you have the following options:
+
+- Skia itself comes with an extensive set of nodes for high-quality simple text rendering
+- Try [VL.RichtextKit](https://forum.vvvv.org/t/vl-richtextkit/19883) for rendering richttext
+- Using [VL.CEF.Skia](https://www.nuget.org/packages/VL.CEF.Skia) to render html content allows for complex formatted text to be rendered
+
+## 3d Graphics
+For [VL.Stride](../libraries/graphics-3d.md) you have the following options:
+- For quick, simple Text rendering use Text [Stride.Models] (experimental)
+- Use any of the above (2d Graphics) options via a SkiaRenderer or SkiaTexture node in Stride
+- Using [VL.CEF.Stride](https://www.nuget.org/packages/VL.CEF.Stride) to render html content allows for complex formatted text to be rendered
+- Use [VL.Stride.Text3d](https://www.nuget.org/packages/VL.Stride.Text3d) for rendering extruded 3d text
+- Try [VL.BMFont](https://www.nuget.org/packages/VL.BMFont)
+- Try [FontStashSharp](https://github.com/FontStashSharp/FontStashSharp) (Text rendering library addon for Stride)
+- For the best available option go with the [Slug](https://sluglibrary.com/) library. Requires a separate license from them. If you need help with the implementation, [get in touch](mailto:devvvvs@vvvv.org).
+
+---
+<!-- page: version-control.md -->
+
+# Version Control with Git
+
+As soon as you're working on something that is more than a quick sketch, you should consider putting your .vl documents under version control using Git. There are other version control systems, but Git is by far the most widely used. It takes some getting used to, but once you get the hang of it, there is no turning back.
+
+So instead of saving your progress under files with incremental names, like foo_1.vl, then foo_2.vl, then foo_3.vl,... where you pile up endless versions of your work but you can't remember which was which, version control allows you to:
+- save the state of your work (even spanning multiple .vl documents) in one "commit"
+- add a human readable message to each commit
+- view your history of commit messages
+- revisit any step of your work that you commited earlier
+
+And all this, without being confused by multiple versions of the same file in one folder. As a bonus you can push your work to a cloud service for these additional benefits:
+- backup
+- access your work from another PC
+- share it with co-workers
+  
+If you need some further convincing you may want to watch some [introductory videos](https://git-scm.com/doc).
+
+## Prerequisites
+
+### Software
+Essentially what you need is:
+- Git itself
+- A Git UI client 
+
+You can use Git via the commandline, ie. without a GUI client (some people prefer so) in which case it is enough to just [download Git](https://git-scm.com/downloads). In the case you decide to go with a [GUI client](https://git-scm.com/downloads/guis), most of them probably also install Git for you, ie. you won't need to download Git extra. 
+
+Which GUI client to choose? In the end you may want to try different ones and see which you prefer. The vvvv development team has been happy with [GitExtensions](https://gitextensions.github.io/) for many years. The best diff/merge tool we found is [P4Merge](https://www.perforce.com/downloads/visual-merge-tool) which you can choose to use as diff/merge tool with GitExtensions (and maybe also other GUI clients).
+
+### Cloud Service
+If you want to backup your git repositories in the cloud, which also allows you to easily share them with others, sign up with one of these [git cloud providers](https://git.wiki.kernel.org/index.php/GitHosting).
+
+
+Most of [vvvv's library repositories](https://github.com/vvvv) are on GitHub, so if you want to contribute to those at some point, you'll need a [GitHub](https://github.com) account.
+
+### Terminology
+
+- Each project is stored in a **repository**
+- To mirror a local repository to a cloud service, you give it a **remote**, ie. a URL to the remote repository
+- Whenever you feel like having your work in a good state, you save it in a **commit** to the repository
+- A repository stores your history of **commits**
+- The last commit in a repository is referred to as **HEAD**
+- To upload your commits to a remote repository, you run the **push** command
+- **Cloning** is the act of making an initial local copy of a remote repository
+- To download commits from a remote repository, you run the **pull** command
+- To revisit a particular state of your work you **checkout** the respective commit
+
+## Getting Started
+
+### Creating a new repository
+
+TODO
+
+### Forking and/or Cloning an existing repository
+
+TODO
+
+### Commiting
+
+Here are some general thoughts regarding commits:
+- Try to commit changes that you can describe well in a commit message
+- Avoid commiting changes that involve multiple "tasks"
+- One commit per task/fix/change is recommended
+- Never commit changes to a file you did not intentionally change (files can get changed while working on something else by accident, or you may forget about something you tried somewhere but did not intend to commit)
+- Always check the changes you are about to commit to make sure they match what you are intending to change
+
+## Working on your own
+As long as you're working on a project on your own, everything is mostly straight forward. A typical workflow will look like this:
+
+- Create a new repository for a new project
+- Commit the initial state of work
+- Make changes, make a new commit
+- Make changes, make a new commit
+- Make changes, make a new commit
+- At the end of the day push your commits to remote, to have it backed up
+- In case you have to move to another PC, just clone the repository on there
+- Make changes, make a new commit
+- Make changes, make a new commit
+- Push your commits to remote
+- Get back to the first PC, pull the remote commits you pushed from PC 2, and continue working
+
+Now, what git allows you to do, is to switch to any state of your work without having worry about loosing your latest state. You do this by running a **checkout** of any particular commit of your history. When you're done looking at the older state, you can go back to your latest state easily by checking it out again. 
+
+There is much more to git, but the above should give you an idea of the most simple workflow. Practice this on your own projects, before moving on to work with a team, where things can get a bit more juicy.
+
+## Working with a team
+
+When working with a team, depending on everyone's git expertise, it may help if you're agree on one Git client to use. So in case there are problems you can help each other out more easily. 
+
+Now the obvious problem that may arise in a team, is that people may be working on the same .vl document independent of each other:
+
+Say you have your local changes to a file in a commit which you try to push, but before you can, git tells you, you need to pull in remote changes. As long as the file you changed locally is not touched in any of the remote commits you're pulling in, all will be fine. Otherwise git will now try to merge the changes of the remote commit into your local file. And here is where things can go wrong!
+
+You'll see three scenarios:
+- Best case: the merge goes through fine
+- Worst case: git claims the merge went fine, when it actually didn't
+- Fine case: git tells you it cannot do an automatic merge and asks for your help
+  
+The thing is that git is made for textual programming languages. vvvv is storing its .vl documents in XML format which luckily is text. But unfortunately git doesn't understand the structure of XML, ie. treats it as normal text and may in some situations corrupt your .vl files in case of a merge.
+
+So the key really is to avoid merge conflicts as good as you can. Remember, as long as work is happening simultaneously but in different files, there will be no conflicts, therefore: 
+
+### Split a project into multiple .vl documents
+
+While with vvvv you can create an entire project in just one .vl document, it is good practice to split projects into multiple documents following these guidelines:
+
+- Have one master .vl document that does not have any definitions, but only applications
+- Have multiple topical .vl documents that hold all the definitions but have an empty application
+  - Examples could be: InputHandling.vl, Scene1Logic.vl, Scene2Logic.vl, LightControls.vl, Audio.vl, Rendering.vl,...
+- Define owners for the individual files, ie. only an owner is allowed to commit a change to a file
+- Reference the definition documents as dependencies in the master document and build the master application there
+
+Obviously the master .vl document is a classic point of conflict because everyone needs to work on it to see their changes working. But try this: If the part you're working on is sufficiently separate from the other parts, use your own local copy of the master document to work in your parts. Here you can mess around as you please. This is just for you to test, you'd not commit this file. Just when your part is integrated as planned you make sure you have the latest master document pulled, tell everyone you'll now be pushing your part and simply copy/paste over your part in one go. Like this you even don't risk a potential merge. Obviously this doesn't work for all scenarios.
+  
+### Communicate
+
+There will be times where changes need to touch many documents at once. In those cases make sure that everyone is aware this is going to happen. Make everyone commit and push their latest state. Then one team member makes the changes touching multiple documents. If in doubt, do these changes together, while screensharing, so everyone knows what's going on. 
+
+## Branching
+
+Branching is not something you should start with. 
+
+## Merging
+
+[Merge Tool for VL documents](https://github.com/vvvv/MergeVLDocs/)
+
+---
+<!-- page: video-capture.md -->
+
+# Video Capture
+
+For capturing video from webcams and capture cards, vvvv offers different solutions:
+
+## VL.Video
+
+This NuGet is shipping with vvvv. Referencing it, gives you the **VideoIn** node which supports all USB cameras that have a [UVC 1.1 driver](https://docs.microsoft.com/en-us/windows-hardware/drivers/stream/usb-video-class-driver-overview).
+
+## VL.Devices.Decklink
+
+For capturing from Blackmagic [Decklink](https://www.blackmagicdesign.com/products/decklink/models) devices.
+
+## VL.Devices.uEye
+
+For capturing from IDS Imaging [uEye Cameras](https://en.ids-imaging.com/store/products/cameras/sort-by/position/sort-direction/desc.html).
+
+---
+<!-- page: video-playback.md -->
+
+# Video Playback
+
+vvvv offers two distinct ways for video playback:
+- Video files
+- Image sequences
+
+## Video files
+- Referencing the VL.Video nuget (shipping with vvvv) adds the **VideoPlayer** [Video] node
+- This node plays a wide range of [video containers and codecs](https://docs.microsoft.com/en-us/windows/win32/medfound/supported-media-formats-in-media-foundation) out of the box
+- If you're missing any codecs for playback, see if they are available in this [Mediafoundation Codec Pack](http://codecguide.com/media_foundation_codecs.htm).
+- Consult the help browser for examples on using the node
+
+### Advantages
+- Quick and easy to use
+- Forgives unstable rendering framerates, by dropping frames if needed
+
+### Disadvantages
+- No seemless looping (may work with certain codecs but not with others)
+- No seemless switching between sources (may work with certain codecs but not with others)
+- May show micro-jitter, most notably in fullscreen playback, because timing is not coupled to the v-sync
+- No network sync
+
+> [!NOTE]
+> For the playback of [HAP video files](http://hap.video) the thirdparty [VL.HapPlayer](https://www.nuget.org/packages/VL.HapPlayer/) nuget is required.
+
+## Image sequences
+
+- Depending on the rendering engine you are using, the following nodes are shipping with vvvv:
+  - VL.Stride (3d engine): **ImagePlayer (Stride)** [Video] or **ImagePlayer (FrameBased Stride)** [Video]
+  - VL.Skia (2d engine): **ImagePlayer (Skia)** [Video] or **ImagePlayer (FrameBased Skia)** [Video]
+- The ImagePlayers for VL.Stride prefer images in the [DDS](https://www.reedbeta.com/blog/understanding-bcn-texture-compression-formats/) format (see below for conversion tools)
+- Both support the playback of JPG, PNG and BMP files
+- Consult the help browser for examples on using the nodes
+
+### Advantages
+- Nodes exist in two variants: timebased and framebased, see below
+- Can do seemless looping
+- Allows to implement seemless switching between sources
+- The playback of image sequences on multiple PCs in a local network can be [synchronized](video-synchronization.md)
+
+### Disadvantage
+- Less comfortable handling of media assets (ie. thousands of image files)
+- Audio tracks need to be played separately using [VL.Audio](https://www.nuget.org/packages/VL.Audio/)
+
+### Timebased vs. Framebased
+
+#### Time based
+- The default, simpler to use option
+- Use for scenarios where the video is not playing fullscreen but rather is part of a scene 
+- Forgives unstable rendering framerates, by dropping frames if needed
+- May show micro-jitter, most notably in fullscreen playback, because timing is not coupled to the v-sync
+  
+#### Frame based
+- Use for scenarios where the video is playing fullscreen
+- For frame-perfect, v-sync coupled playback
+- Requires a perfectly stable rendering framerate
+
+### DDS conversion tools
+
+* [Texconv](https://github.com/Microsoft/DirectXTex/wiki/Texconv): Commandline tool
+* [TexconvGUI](https://github.com/bj-rn/texconvgui/releases): A GUI for the above
+* [Intel's Texture Works](https://gametechdev.github.io/Intel-Texture-Works-Plugin/): A Plugin for Photoshop
+* [NVIDIA Texture Tools Exporter](https://developer.nvidia.com/nvidia-texture-tools-exporter)
+* [AMD Compressonator](https://gpuopen.com/gaming-product/compressonator/)
+
+---
+<!-- page: video-recording.md -->
+
+# Video Recording
+
+Here are a couple of options for screen recording.
+
+## XBox Game Bar
+Typically installed on Windows 10, otherwise available via the Microsoft Store. 
+
+Press <span class="keyseq"><kbd>Windows</kbd><kbd>G</kbd></span> to open it. Allows you to record fullscreen video plus audio.
+
+## NVidia Cards
+If not yet installed with your drivers, download and install [Geforce Experience](https://www.nvidia.com/de-de/geforce/geforce-experience/).
+
+Press <span class="keyseq"><kbd>ALT</kbd><kbd>Z</kbd></span> to open it. Allows you to record fullscreen video plus audio.
+
+## AMD Cards
+If not yet installed with your drivers, download and install [Radeon Software](https://www.amd.com/en/technologies/radeon-software-gaming-media).
+
+Press <span class="keyseq"><kbd>ALT</kbd><kbd>R</kbd></span> to open it. Allows you to record fullscreen video plus audio.
+
+## OBS Studio
+Free and open source software for video recording and live streaming: https://obsproject.com/
+
+## VL.ScreenRecorder
+If you're looking for a recording option as part of your application, have a look at the [VL.ScreenRecorder](https://www.nuget.org/packages/VL.ScreenRecorder) NuGet.
+
+## VL.LoopTool
+A collection of nodes designed to simplify the creation of repeating loop animations. Includes animation nodes that respond to a global sequencer, making it easy to create smooth tween animations. Provides animated camera and scene presets. Captures video, image sequences and images.  
+NuGet: [VL.LoopTool](https://www.nuget.org/packages/VL.LoopTool)
+
+## High resolution Texture/Image Writer
+If you want to write high-resolution image sequences in non-realtime, use the the following nodes:
+- for VL.Stride: TextureWriter in combination with SceneTexture
+- for VL.Skia: ImageWriter in combination with Renderer (Offscreen) 
+
+Use those in also combination with the MainLoop node set to "Is Incremental" and specifying the "Incremental FPS" you need. This makes sure that the timing of all nodes that are depending on a clock (like LFOs, Filters,...) is correctly advanced, no matter how long it takes, to write each of the images to disk. 
+
+> [!NOTE]
+> This technique does not work for scenarios where your visual content relies on realtime parameters like audio analysis or realtime sensor data.
+
+## Gif Recorders
+For recording animated gifs, try the [LiceCap](https://www.cockos.com/licecap/) screen capturing tool.
+
+---
+<!-- page: video-synchronization.md -->
+
+# Video Synchronization
+
+Using either the **ImagePlayer (Stride)** or **ImagePlayer (Skia)** nodes (or their framebased variants) found in the Video category, it is possible to synchronize the playback of videos that are playing on different PCs, when connected via a local network. 
+
+
+## How it works
+Both server and clients run their own playback mechanism (timebased or framebased) and the server sends control info (play, seek, loop from/to) to the clients. In addition, the server sends its current stream position which the clients can adapt to in case they diverge too far from it.
+
+When the server sends a "play" message, all clients will be already in perfect sync depending on 3 conditions:
+
+ - Did the "play" message arrive at the same time on all clients
+ - Are server and clients frame synced via hardware, ie, using Quadro or FirePro cards
+ - Do server and clients have a perfectly stable framerate
+ 
+ If either of the conditions is not true, there may be an offset from the start, or an offset may happen over time. To compensate for this offset, the clients will have to adapt to the servers stream position.
+
+## Time based
+
+In this case, the clients time is continuously adapted to the servers time if necessary so they cannot diverge much. This may though interfere with v-sync timing and increase the chance of micro-jitter which timebased playback has anyway already. 
+
+See `HowTo Synchronize players between multiple PCs`  in the Helpbrowser.
+
+## Frame based
+
+In this case, to figure out an offset on the client side and decide when to jump, you can come up with different strategies. The FramePlayer node implements one of them. 
+
+See `HowTo Synchronize framebased players between multiple PCs` in the Helpbrowser.
+
+---
+<!-- page: vvvv-on-arm.md -->
+
+# vvvv on Arm 
+
+Since version 7.0 we offer dedicated builds for running on Arm CPUs. In the download section, switch to the Arm tab to see available downloads:
+
+[![Arm downloads](../../images//reference//best-practice/vvvv-on-arm.png)](https://vvvv.org/download/)
+
+## Limitations
+Unfortunately some libraries will not work with Arm builds of vvvv. This will be the case when a library itself has what are called "native dependencies" that are not available for Arm. In order to find out if libraries might have problems on Arm, run an Arm build of vvvv on an Arm CPU with the commandline argument `--log` and examine the created logfile for warnings like:
+
+`Library Foo contains native assets but none for the current runtime win-arm64...`
+
+Generally we can give the following (incomplete) overview of Arm compatibility for libraries:
+
+### VL.Stride
+Available since 7.1-preview 68
+
+Arm CPUs often will not be accompanied by Nvidia GPUs. Non-Nvidia GPUs though seem to be much closer following the official specs, when it comes to shader programming. This will lead to the impression that things working on a machine with an Nvidia GPU are broken on a machine with a non-Nvidia GPU, when in fact most often the program is actually broken to begin with, only Nvidia GPUs still manage to run them. So really the code needs to be fixed to be valid on all GPUs!
+
+You'll see in few help patches we've added a warning: ⚠️Nvidia only⚠️ when they are using a rendering technique that is only supported on Nvidia cards.
+
+### VL.Fuse
+Same as VL.Stride, see above. Largely works but fails in areas where shaders have been written in a way to only work on Nvidia GPUs.
+
+### VL.Audio
+Using the Resample [Audio.Utils] node will crash vvvv.
+
+### Should work
+The following libraries do not yet have Arm support in vvvv, but it seems the underlying libraries do. So it should be possible to get them working with Arm builds of vvvv with some effort:
+- VL.OpenCV
+- VL.IO.NDI
+
+### Could work
+Support for the following libararies depends on support for Arm CPUs by the creators of the underlying libraries. In case they offer support, we can most likely make them work with Arm builds of vvvv:
+- VL.VIOSOWarpBlend
+- VL.ScalableDisplay 
+- VL.Devices.Zed
+- VL.Devices.RealSense
+- VL.Devices.Orbbec
+- VL.Devices.Nuitrack
+- VL.Devices.Ultraleap
+- VL.Devices.Decklink
+- VL.Devices.IDS
+- VL.Devices.TheImagingSource
+
+### Will not work
+There is little chance that the below devices will be supported on Arm CPUs by the manufacturer:
+- VL.Devices.Astra
+- VL.Devices.Kinect
+- VL.Devices.Kinect2
+- VL.Devices.AzureKinect
+
+---
+<!-- page: vvvv-on-mac.md -->
+
+# Running vvvv on a Mac
+
+vvvv does not have a native version for macOS!
+
+**But**: There are ways to get it running on macOS without noticable performance issues on recent Mac hardware. 
+
+> We're testing on a Mac mini with Apple M4 chip and 24GB of ram running macOS Tahoe. Therefore this article is only talking about using modern Arm based Apple silicon CPUs and not Apples legacy intel-based chips!
+
+Here are the options:
+
+## Parallels Desktop
+
+![](../../images/reference/best-practice/vvvv-on-mac.png)
+
+[Parallels Desktop](https://www.parallels.com/de/products/desktop) allows you to run Windows in a virtual machine on macOS. Installation of Parallels, including Windows takes < 30min. When set-up, make sure to download and install the [Arm build of vvvv](vvvv-on-arm.md).
+
+We're testing with Version 26 of Parallels. 
+
+### Known issues
+Right-draging an IOBox or input pin sometimes fails. Changing the following setting in Parallels, fixes this:
+
+    Your Virtual Machines Configuration > Hardware > Mouse & Keyboard > Mouse: Optimize for games
+
+### Limitations
+Unfortunately some libraries are not working with Arm builds of vvvv, for details see: [vvvv on Arm](vvvv-on-arm.md).
+
+## Other Options
+
+For other, as of this writing more experimental ways, see [this forum thread](https://forum.vvvv.org/t/vvvv-on-macos-and-linux/24159).
+
+
