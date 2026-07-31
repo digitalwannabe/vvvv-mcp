@@ -14,11 +14,11 @@ public class KnowledgeResources
         _knowledge = knowledge;
     }
 
-    // ── Synthesized skill files ─────────────────────────────────────────────
+    // ── Quick reference / cheat sheet ──────────────────────────────────────
 
-    [McpServerResource(Name = "vvvv Concepts", UriTemplate = "vvvv://knowledge/concepts")]
-    [Description("Core vvvv gamma concepts: execution model, node types, type system, regions, IOBoxes, links, patches, Stride 3D scene structure, VL.CoreLib categories, key packages.")]
-    public string GetConcepts() => Get("vvvv-concepts");
+    [McpServerResource(Name = "vvvv Quick Reference", UriTemplate = "vvvv://knowledge/quickref")]
+    [Description("XML cheat sheet and topic index: NodeReference patterns (OperationCallFlag vs ProcessAppFlag), .vl critical rules, ProcessDefinition skeleton, IOBox types, VL.CoreLib category lookup, Stride scene structure, and a map to every other knowledge document.")]
+    public string GetQuickRef() => Get("vl-quickref");
 
     [McpServerResource(Name = "vvvv VL File Format", UriTemplate = "vvvv://knowledge/file-format")]
     [Description("The .vl XML file format: document structure, element hierarchy, ID system, NodeReference/Choice patterns, Pins, Pads, Links, regions, TypeAnnotations, common mistakes.")]
@@ -86,7 +86,29 @@ public class KnowledgeResources
     [Description("Official vvvv documentation — Explanations and introductions: conceptual articles, background material on vvvv's approach to live programming.")]
     public string GetGrayBookIntroduction() => Get("gray-book-introduction");
 
-    // ── Private helpers ────────────────────────────────────────────────────
+    // -- Additional skills (from tebjan/vvvv-skills submodule) -----------------
+
+    [McpServerResource(Name = "vvvv Spreads (Collections)", UriTemplate = "vvvv://knowledge/spreads")]
+    [Description("vvvv Spread<T> immutable collection: creation, SpreadBuilder, mapping, filtering, zipping, accumulation, ReadOnlySpan patterns, performance rules.")]
+    public string GetSpreads() => Get("vvvv-spreads");
+
+    [McpServerResource(Name = "vvvv Node Libraries", UriTemplate = "vvvv://knowledge/node-libraries")]
+    [Description("Creating vvvv C# node libraries: project structure, AssemblyInitializer, ImportAsIs/ImportNamespace/ImportType, service registration, node factories, publishing NuGets.")]
+    public string GetNodeLibraries() => Get("vvvv-node-libraries");
+
+    [McpServerResource(Name = "vvvv Startup & CLI", UriTemplate = "vvvv://knowledge/startup")]
+    [Description("Launching vvvv gamma: CLI arguments, --package-repositories, --editable-packages, filesystem paths, installation detection.")]
+    public string GetStartup() => Get("vvvv-startup");
+
+    [McpServerResource(Name = "vvvv Debugging", UriTemplate = "vvvv://knowledge/debugging")]
+    [Description("Debugging vvvv gamma: VS Code launch.json generation, attaching debugger, Visual Studio profiles.")]
+    public string GetDebugging() => Get("vvvv-debugging");
+
+    [McpServerResource(Name = "vvvv Testing", UriTemplate = "vvvv://knowledge/testing")]
+    [Description("Automated testing: VL.TestFramework with NUnit, test patches, assertion nodes, CI integration.")]
+    public string GetTesting() => Get("vvvv-testing");
+
+    // -- Private helpers -------------------------------------------------------
 
     private string Get(string name)
     {

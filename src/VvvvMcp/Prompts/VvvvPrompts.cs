@@ -31,7 +31,7 @@ public static class VvvvPrompts
             2. Call `explain_patch` to get an initial natural language overview.
             3. For any node names you don't recognize, call `get_node_details` or `search_nodes`.
             4. If you need more vvvv conceptual context, call `read_knowledge` with one of:
-               - 'vvvv-concepts' — core concepts, types, node types, Stride scene
+               - 'vl-quickref' — XML cheat sheet, NodeReference patterns, critical rules, topic index
                - 'vvvv-patching' — patching patterns, regions, event handling
                - 'vl-file-format' — VL XML structure details
                - 'vvvv-packages' — package/library reference
@@ -128,7 +128,7 @@ public static class VvvvPrompts
             "**Link** connecting nodes:\n" +
             "`<Link Id=\"{unique-id}\" Ids=\"{source-output-pin-id},{target-input-pin-id}\" />`\n\n" +
             "## Steps to create the patch\n" +
-            "1. Call `read_knowledge` with 'vvvv-concepts' to understand node types and the type system.\n" +
+            "1. Call `read_knowledge` with 'vl-quickref' for the XML cheat sheet and topic index.\n" +
             "   Also call `read_knowledge` with 'gray-book-language' for the full official language reference.\n" +
             "2. Call `search_nodes` to find relevant nodes (e.g. 'Box', 'TransformSRT', 'LFO', etc.).\n" +
             "3. Call `get_node_details` for key nodes to know their exact pin names and types.\n" +

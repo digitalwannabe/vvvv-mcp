@@ -1,6 +1,3 @@
-[submodule "The-Gray-Book"]
-	path = The-Gray-Book
-	url = https://github.com/vvvv/The-Gray-Book.git
 [submodule "knowledge/The-Gray-Book"]
 	path = knowledge/The-Gray-Book
 	url = https://github.com/vvvv/The-Gray-Book.git
