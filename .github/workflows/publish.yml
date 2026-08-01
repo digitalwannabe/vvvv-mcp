@@ -1,0 +1,88 @@
+name: Publish to NuGet.org
+
+on:
+  # Manual trigger — allows specifying version bump
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 0.3.0). Leave empty to use version in VvvvMcp.csproj."
+        required: false
+        default: ""
+
+  # Automatic trigger on version tags: git tag v0.3.0 && git push --tags
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    runs-on: windows-latest
+
+    # Required for NuGet Trusted Publishing (OIDC token issuance)
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive   # knowledge/ submodules need to be present
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.x"
+
+      # Bump version in csproj if provided via workflow_dispatch input
+      - name: Set version (manual trigger)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.version != '' }}
+        shell: pwsh
+        run: |
+          $csproj = "src/VvvvMcp/VvvvMcp.csproj"
+          $xml = [xml](Get-Content $csproj)
+          $xml.SelectSingleNode("//Version").InnerText = "${{ inputs.version }}"
+          $xml.Save($csproj)
+          Write-Host "Version set to ${{ inputs.version }}"
+
+      # Extract version from tag (v0.3.0 → 0.3.0) and set it in the csproj
+      - name: Set version (tag trigger)
+        if: ${{ github.event_name == 'push' }}
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"        # e.g. v0.3.0
+          $version = $tag.TrimStart("v")          # e.g. 0.3.0
+          $csproj = "src/VvvvMcp/VvvvMcp.csproj"
+          $xml = [xml](Get-Content $csproj)
+          $xml.SelectSingleNode("//Version").InnerText = $version
+          $xml.Save($csproj)
+          Write-Host "Version set to $version (from tag $tag)"
+
+      - name: Build
+        run: dotnet build src/VvvvMcp/VvvvMcp.csproj -c Release
+
+      - name: Pack
+        run: dotnet pack src/VvvvMcp/VvvvMcp.csproj -c Release --no-build -o nupkg
+
+      - name: Show package
+        shell: pwsh
+        run: |
+          $pkg = Get-ChildItem nupkg/*.nupkg | Select-Object -First 1
+          $mb  = [math]::Round($pkg.Length / 1MB, 1)
+          Write-Host "Package: $($pkg.Name) ($mb MB)"
+
+      # NuGet Trusted Publishing — exchanges GitHub OIDC token for a short-lived API key.
+      # Requires "Trusted Publishing" policy configured on nuget.org for this repo + workflow.
+      # See: https://learn.microsoft.com/nuget/nuget-org/trusted-publishing
+      - name: NuGet login (OIDC)
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: digital.wannabe
+
+      - name: Push to NuGet.org
+        run: >
+          dotnet nuget push nupkg/*.nupkg
+          --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate

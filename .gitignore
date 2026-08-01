@@ -16,5 +16,4 @@ VVVVNodeAnalyzer/**/usable-nodes.json
 VVVVNodeAnalyzer/**/usable-nodes.md
 # Local secrets — never commit
 .env
-*.nupkg
-/nupkg/
+

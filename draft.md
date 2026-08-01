@@ -44,3 +44,163 @@ we should also recursively scrape all help files and other patches for all nodes
 
 update bonus:
 create a suite of challenges (=hard vvvv patches) and let the mcp do it to test different models using the mcp, with scoreboard/ranking on a webpage...
+
+
+---
+
+# phase 3: true remote control of a running vvvv instance
+
+*research findings — not yet implemented*
+
+## the question
+
+can the mcp actually control a running vvvv? not just edit xml files on disk, but: know which patch is running, open/close patches, install packs, read live values, write parameters, trigger reloads — essentially use vvvv as a programmable runtime from the outside.
+
+## what we found
+
+### vvvv is a .net app — all doors are open from the inside
+
+vvvv gamma is a regular .net 8 application. any c# code running inside it has full access to:
+- the running patch state
+- the document model (which files are open, their canvas/node/link structure)
+- live pin values on any running node
+- errors and warnings
+- the service registry (`AppHost.Global.Services`)
+
+crucially: **you can attach a vs/vs code debugger to a running vvvv process** just like any other .net app. this means any bridge code we write inside vvvv can be developed and debugged with full ide support — no blind ipc debugging.
+
+### the `.HDE.vl` extension mechanism
+
+any file named `*.HDE.vl` that vvvv loads **automatically runs inside the editor** as an extension. this is the official, supported way to extend the editor. it gives you:
+- access to `VL.Lang` session nodes (live editor api)
+- which documents are open
+- ability to register menu commands + keyboard shortcuts
+- ability to spawn custom ui panels
+
+this is the cleanest entry point for a bridge that needs editor-level access (open/close patches, navigate, install packs).
+
+### key internal apis
+
+**`AppHost`** — the master key:
+```csharp
+AppHost.Global           // the editor's global host, accessible from any node
+  .Services              // full DI service registry — get any registered service
+  .SynchronizationContext// post work to the vvvv main loop from another thread
+  .LoadPlugin(path)      // load a dll into vvvv at runtime
+  .App                   // the running application object
+  .NodeFactoryRegistry   // all registered node factories
+```
+
+**`VL.Lang.PublicAPI`** — live patch state:
+```csharp
+ILiveElement             // any running element → data stream, errors, messages
+ILiveDataHub             // any pin/pad → value, IsConnected, CreateDataChannel()
+                         // CreateDataChannel() gives R/W access to any pin value
+ILiveNodeApplication     // a running node → all pins, timing, learn mode
+ILiveLink                // a wire → source and sink data hubs
+```
+
+**`VL.Model`** — document model:
+```csharp
+VL.Model.Solution        // all open documents
+VL.Model.VLSession       // the session
+  .CurrentSolution       // access the current solution
+VL.Model.Canvas          // a patch canvas
+VL.Model.DataHub         // a pin/pad/control point
+```
+
+**`IStartup` interface** — participate in vvvv startup:
+```csharp
+void Configure(AppHost)  // called during startup, register your services here
+```
+
+### what does NOT exist
+
+- no `IHDEHost` scripting interface (that was vvvv4/beta, removed in gamma)
+- no built-in http/websocket server on any port by default
+- no external cli to send commands to a running vvvv
+- no repl or named pipe server waiting by default
+
+however: **aspnet core / kestrel is already loaded in the vvvv process**. a c# node can start a full http server with zero extra dependencies.
+
+### existing io packs that help
+
+| pack | what it gives us |
+|---|---|
+| `VL.IO.WebSocket` | websocket server/client nodes, has "web ui to control an app" help patches |
+| `VL.IO.OSCQuery` | zero-config http+websocket server exposing all public channels (http schema, ws updates) |
+| `VL.IO.Pipes` | named pipe ipc — "howto: inter-process communication via namedpipes" |
+| `VL.IO.OSC` | osc udp — bidirectional, works with max/pd/touchdesigner etc |
+| `VL.IO.Redis` | bind channels to redis — useful if mcp runs as a service |
+
+### the oscquery shortcut
+
+adding a single `OSCQueryServer` node to a patch gives instant:
+- `GET /` → json schema of all public channels  
+- websocket updates when any channel changes
+- `PUT /<channel>` → write a value
+
+this covers "read/write running parameters" with zero custom code.
+
+## recommended architecture for when we build this
+
+```
+mcp server (this repo)
+    │
+    ├── xml editing      ← always available, creates/modifies .vl files on disk
+    │                       vvvv hot-reloads on file save automatically
+    │
+    ├── VL.MCP.HDE.vl   ← editor extension (auto-loads), opt-in for users
+    │   (websocket or    ← exposes:
+    │    http on fixed      · which documents are open (solves "which file to edit")
+    │    port e.g. 7123)    · compilation errors + warnings (feedback loop)
+    │                       · trigger explicit reload after xml edit
+    │                       · open/close/navigate patches
+    │                       · list installed packs
+    │
+    └── VL.MCPBridge    ← optional process node dropped into a running patch
+        (node in patch)    · live pin value read/write via ILiveDataHub
+                           · console output capture
+                           · rendering snapshots (spout / screengrab)
+                           · public channel read/write
+```
+
+the mcp degrades gracefully:
+- no bridge running → xml edit + explain only (works today)
+- hde extension loaded → editor awareness + live errors + file reload signals
+- mcpbridge node in patch → full runtime control + live feedback
+
+## implementation plan (for when we start)
+
+1. **`VL.MCP.HDE.vl`** — a single hde extension vl file:
+   - uses `VL.IO.WebSocket` server node (already ships with vvvv)
+   - Session nodes to query open documents + errors
+   - protocol: simple json over websocket, port 7123 (configurable as iobox)
+   - distributable as a nuget or just a vl file users drop in their project
+
+2. **mcp tools that use the bridge** (when detected, otherwise no-op):
+   - `get_running_documents` → list of open .vl file paths
+   - `get_vvvv_errors` → current compilation errors with file + line
+   - `reload_file` → post-edit reload signal
+   - `open_patch` → navigate to a .vl file
+
+3. **`VL.MCPBridge`** (c# node, optional):
+   - uses `AppHost.Global` + `ILiveDataHub` for pin access
+   - uses aspnet core (already in process) for http api
+   - exposes: node outputs, channel values, console log stream
+
+## the vs debugger angle
+
+since vvvv is a .net 8 app, any c# bridge node we write can be debugged by:
+- attaching vs/vs code debugger to the `vvvv.exe` process
+- setting breakpoints in the bridge node's c# source
+- inspecting live values via the debugger watch window
+
+this eliminates the usual "how do i debug my ipc server" problem. the bridge is just a normal .net class, debuggable like any other. this makes development of the bridge significantly easier than it would be for a native plugin or an external process.
+
+## related: what the mcp should NOT try to do
+
+- open the node browser programmatically (it's a ui, not an api)
+- simulate mouse/keyboard input (fragile, os-specific)
+- recompile vl documents (vvvv does this itself on file save)
+- manage vvvv process lifecycle from the mcp (out of scope — multiple versions may run)

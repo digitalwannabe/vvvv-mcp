@@ -1,75 +1,49 @@
 <#
 .SYNOPSIS
-    Builds, packs, and publishes vvvv-mcp to NuGet.org.
-
-.DESCRIPTION
-    Reads NUGET_API_KEY from .env (gitignored) in the repo root.
-    Bumps the version in VvvvMcp.csproj if -Version is supplied.
+    Builds and packs vvvv-mcp locally, then installs it as a global tool for testing.
+    NuGet.org publishing is handled by GitHub Actions (.github/workflows/publish.yml).
 
 .PARAMETER Version
-    New version string (e.g. "0.3.0"). If omitted, uses the version in VvvvMcp.csproj.
+    Override the version in VvvvMcp.csproj (e.g. "0.3.0-preview").
+    Leave empty to use the version already in the csproj.
 
 .PARAMETER SkipBuild
-    Skip dotnet build (use if already built).
-
-.PARAMETER LocalOnly
-    Pack but do not push. Useful for testing the local install.
+    Skip dotnet build (use if already built in Release).
 
 .EXAMPLE
-    ./scripts/publish.ps1
+    ./scripts/publish.ps1                      # build, pack, local install
+    ./scripts/publish.ps1 -Version 0.3.0       # bump version, build, pack, local install
 
-.EXAMPLE
-    ./scripts/publish.ps1 -Version 0.3.0
-
-.EXAMPLE
-    ./scripts/publish.ps1 -LocalOnly
+.NOTES
+    To publish to NuGet.org:
+      git tag v0.3.0
+      git push --tags
+    GitHub Actions will handle the rest via Trusted Publishing.
 #>
 [CmdletBinding()]
 param(
-    [string] $Version    = "",
-    [switch] $SkipBuild,
-    [switch] $LocalOnly
+    [string] $Version  = "",
+    [switch] $SkipBuild
 )
 
 $ErrorActionPreference = "Stop"
 
-$repoRoot  = Split-Path $PSScriptRoot -Parent
-$csproj    = Join-Path $repoRoot "src\VvvvMcp\VvvvMcp.csproj"
-$nupkgDir  = Join-Path $repoRoot "nupkg"
-$envFile   = Join-Path $repoRoot ".env"
-
-# ---- Read API key from .env ------------------------------------------------
-
-$apiKey = $null
-if (-not $LocalOnly) {
-    if (-not (Test-Path $envFile)) {
-        Write-Error ".env not found. Copy .env.example to .env and set NUGET_API_KEY."
-        return
-    }
-    foreach ($line in Get-Content $envFile) {
-        if ($line -match '^NUGET_API_KEY\s*=\s*(.+)$') {
-            $apiKey = $Matches[1].Trim()
-        }
-    }
-    if (-not $apiKey) {
-        Write-Error "NUGET_API_KEY is empty in .env. Add your key from https://www.nuget.org/account/apikeys"
-        return
-    }
-}
+$repoRoot = Split-Path $PSScriptRoot -Parent
+$csproj   = Join-Path $repoRoot "src\VvvvMcp\VvvvMcp.csproj"
+$nupkgDir = Join-Path $repoRoot "nupkg"
 
 # ---- Optionally bump version -----------------------------------------------
 
 if ($Version) {
     $xml = [xml](Get-Content $csproj)
-    $versionNode = $xml.SelectSingleNode("//Version")
-    if (-not $versionNode) { Write-Error "Could not find <Version> in $csproj"; return }
-    $oldVer = $versionNode.InnerText
-    $versionNode.InnerText = $Version
+    $node = $xml.SelectSingleNode("//Version")
+    if (-not $node) { Write-Error "<Version> not found in $csproj"; return }
+    $old = $node.InnerText
+    $node.InnerText = $Version
     $xml.Save($csproj)
-    Write-Host "Version bumped: $oldVer -> $Version"
+    Write-Host "Version: $old -> $Version"
 }
 
-# Read final version
 $xml = [xml](Get-Content $csproj)
 $currentVersion = $xml.SelectSingleNode("//Version").InnerText
 Write-Host "Packaging vvvv-mcp $currentVersion"
@@ -86,8 +60,6 @@ if (-not $SkipBuild) {
 # ---- Pack ------------------------------------------------------------------
 
 New-Item -ItemType Directory -Force -Path $nupkgDir | Out-Null
-
-# Remove any previous version of this package to avoid confusion
 Get-ChildItem $nupkgDir -Filter "vvvv-mcp.*.nupkg" | Remove-Item -Force
 
 Write-Host "Packing..."
@@ -95,40 +67,22 @@ dotnet pack $csproj -c Release -o $nupkgDir --no-build 2>&1 | Select-Object -Las
 if ($LASTEXITCODE -ne 0) { Write-Error "Pack failed"; return }
 
 $nupkg = Get-ChildItem $nupkgDir -Filter "vvvv-mcp.*.nupkg" | Select-Object -First 1
-if (-not $nupkg) { Write-Error "nupkg not found"; return }
-
 $sizeMB = [math]::Round($nupkg.Length / 1MB, 1)
 Write-Host "Package: $($nupkg.Name) ($sizeMB MB)"
 
-# ---- Test local install (always) -------------------------------------------
+# ---- Local install test ----------------------------------------------------
 
 Write-Host ""
-Write-Host "Testing local install..."
+Write-Host "Installing locally..."
 dotnet tool uninstall -g vvvv-mcp 2>$null
-dotnet tool install -g --add-source $nupkgDir vvvv-mcp 2>&1
+dotnet tool install -g --add-source $nupkgDir vvvv-mcp
 if ($LASTEXITCODE -ne 0) { Write-Error "Local install failed"; return }
 
-$toolVer = (vvvv-mcp --version 2>&1).Trim()
-Write-Host "Installed: $toolVer"
 Write-Host ""
-
-if ($LocalOnly) {
-    Write-Host "Done (local only). Run 'vvvv-mcp --setup' to configure clients."
-    return
-}
-
-# ---- Push to NuGet.org -----------------------------------------------------
-
-Write-Host "Pushing to NuGet.org..."
-dotnet nuget push $nupkg.FullName `
-    --api-key $apiKey `
-    --source "https://api.nuget.org/v3/index.json" `
-    --skip-duplicate
-if ($LASTEXITCODE -ne 0) { Write-Error "Push failed"; return }
-
+Write-Host "Installed: $(vvvv-mcp --version)"
 Write-Host ""
-Write-Host "Published: https://www.nuget.org/packages/vvvv-mcp/$currentVersion"
+Write-Host "Run 'vvvv-mcp --setup' to configure MCP clients."
 Write-Host ""
-Write-Host "Users can now install with:"
-Write-Host "  dotnet tool install -g vvvv-mcp"
-Write-Host "  vvvv-mcp --setup"
+Write-Host "To publish to NuGet.org, push a version tag:"
+Write-Host "  git tag v$currentVersion"
+Write-Host "  git push --tags"

@@ -24,16 +24,7 @@ vvvv-mcp --setup
 
 ```powershell
 dotnet tool update -g vvvv-mcp
-```
-
-### Refresh the node catalog
-
-The catalog ships as a snapshot with the tool. To pull the latest packages from NuGet and rebuild it (requires cloning this repo):
-
-```powershell
-git clone https://github.com/digitalwannabe/mcp-gamma-server
-cd vvvv-mcp
-./scripts/update-catalog.ps1
+vvvv-mcp --setup   # re-run if paths changed
 ```
 
 ---
@@ -154,6 +145,26 @@ dotnet run --project src/VvvvMcp -- --setup   # configure MCP clients to use thi
 ```bash
 npx @modelcontextprotocol/inspector -- dotnet src/VvvvMcp/bin/Debug/net8.0/VvvvMcp.dll
 ```
+
+### Publish a new version
+
+```powershell
+# 1. Test the package locally (optional)
+./scripts/publish.ps1 -Version 0.3.0
+
+# 2. Commit, tag, push — GitHub Actions publishes to NuGet.org automatically
+git add -A && git commit -m "release 0.3.0"
+git tag v0.3.0
+git push --tags
+```
+
+Uses [NuGet Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing) — no API keys stored anywhere. Configure once on [nuget.org/account/trustedpublishing](https://www.nuget.org/account/trustedpublishing):
+
+| Field | Value |
+|---|---|
+| Repository owner | `digital.wannabe` |
+| Repository | `mcp-gamma-server` |
+| Workflow file | `publish.yml` |
 
 ---
 
