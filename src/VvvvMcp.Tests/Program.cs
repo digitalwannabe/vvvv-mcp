@@ -9,7 +9,7 @@ Console.WriteLine("[1] Testing NodeCatalogService...");
 var catalogLogger = NullLogger<NodeCatalogService>.Instance;
 var catalog = new NodeCatalogService(catalogLogger);
 
-var catalogPath = args.Length > 0 ? args[0] : @"x:\_dev\vvvv-mcp\VVVVNodeAnalyzer\vvvv_nodes_mcp.json";
+var catalogPath = args.Length > 0 ? args[0] : @"x:\_dev\vvvv-mcp\VVVVNodeAnalyzer\output\vvvv_nodes_mcp.json";
 if (!File.Exists(catalogPath))
 {
     Console.WriteLine($"  ERROR: Catalog not found at {catalogPath}");

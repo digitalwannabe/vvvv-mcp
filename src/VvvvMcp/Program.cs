@@ -47,7 +47,7 @@ if (catalogPath is null || !File.Exists(catalogPath))
     var candidates = new[]
     {
         Path.Combine(AppContext.BaseDirectory, "vvvv_nodes_mcp.json"),
-        Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "VVVVNodeAnalyzer", "vvvv_nodes_mcp.json"),
+        Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "VVVVNodeAnalyzer", "output", "vvvv_nodes_mcp.json"),
     };
     catalogPath = candidates.FirstOrDefault(File.Exists);
 }

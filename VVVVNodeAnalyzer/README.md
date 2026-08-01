@@ -1,145 +1,213 @@
-# vvvv Gamma Plugin Analyzer
+# VVVVNodeAnalyzer
 
-A comprehensive tool for analyzing vvvv Gamma plugins, supporting both VL documents and .NET libraries.
+Extracts a comprehensive, MCP-ready node catalog from vvvv gamma NuGet packages.
+Produces `vvvv_nodes_mcp.json` — the node database used by the vvvv-mcp server.
 
-## Features
+**No local vvvv installation required.** All packages are available on NuGet.org.
 
-### Plugin Type Detection
-- **VL Document Plugins**: Traditional VL-based plugins with .vl files
-- **.NET Library Plugins**: Pure .NET library packages that expose nodes through reflection
-- **Hybrid Plugins**: Plugins containing both VL documents and .NET libraries
+---
 
-### Analysis Capabilities
+## Quick Usage
 
-#### VL Document Analysis
-- Parse .vl files and extract patch structure
-- Analyze nodes, pins, and connections
-- Extract dependencies and references
-- Identify custom operations and processes
+### Regenerate the full catalog
 
-#### .NET Library Analysis
-- Scan .dll files in lib directories (including subdirectories)
-- Extract public types, methods, and properties
-- Generate node information from .NET APIs
-- Parse XML documentation when available
-- Identify extension methods and static operations
-
-#### Package Analysis
-- Parse .nuspec files for package metadata
-- Extract NuGet dependencies
-- Analyze directory structure
-- Validate plugin structure
-
-#### Help System Analysis
-- Scan help directories for documentation
-- Categorize help patches by type
-- Parse Help.xml structure files
-
-## Usage
-
-```bash
-# Basic analysis with JSON output
-VvvvPluginAnalyzer.exe "C:\path\to\plugin"
-
-# Generate markdown report
-VvvvPluginAnalyzer.exe "C:\path\to\plugin" markdown
-
-# Generate both JSON and markdown
-VvvvPluginAnalyzer.exe "C:\path\to\plugin" both
-
-# Specify custom output path
-VvvvPluginAnalyzer.exe "C:\path\to\plugin" json "custom-analysis.json"
+```powershell
+# From the repo root — downloads packages and rebuilds the catalog:
+./scripts/update-catalog.ps1
 ```
 
-## Output Formats
+### Analyze a single package
 
-### JSON Export
-Comprehensive machine-readable analysis including:
-- Package metadata
-- All discovered nodes with full pin information
-- .NET library details with type information
-- Dependency graph
-- Help system structure
-
-### Markdown Report
-Human-readable report with:
-- Package overview
-- Node categorization by source (VL vs .NET)
-- Library documentation status
-- Help system summary
-- Directory structure validation
-
-## Node Discovery
-
-### From VL Documents
-- Extracts nodes defined in patches
-- Analyzes pin types and connections
-- Identifies custom operations
-- Maps dependencies to external libraries
-
-### From .NET Libraries
-- Scans all public types in referenced assemblies
-- Converts static methods to nodes
-- Converts instance methods to nodes (with instance input)
-- Converts properties to getter/setter nodes
-- Preserves XML documentation as node help
-
-## Plugin Structure Validation
-
-The analyzer validates plugin structure based on type:
-- Ensures required files are present (.nuspec, .vl or .dll)
-- Checks directory structure conventions
-- Validates dependency declarations
-- Reports structural issues
-
-## Advanced Features
-
-### Complexity Metrics
-- Node count statistics
-- Patch complexity analysis
-- Dependency depth analysis
-- Type usage statistics
-
-### Extension Methods
-```csharp
-// Get nodes by category
-var nodesByCategory = result.GetNodesByCategory();
-
-// Find nodes with specific operations
-var mathNodes = result.FindNodesWithOperation("Add");
-
-// Get complexity metrics
-var metrics = result.CalculateComplexityMetrics();
-
-// Get libraries with documentation
-var documentedLibs = result.GetLibrariesWithDocumentation();
+```powershell
+dotnet run -- "C:\path\to\VL.SomePackage"
+dotnet run -- "C:\path\to\VL.SomePackage" nodes-only
 ```
 
-## Examples
+### Batch-analyze a directory of packages
 
-### Analyzing a VL Plugin
-```bash
-VvvvPluginAnalyzer.exe "C:\vvvv\packages\VL.Devices.Leap" both
+```powershell
+dotnet run -- batch "C:\path\to\packs-community" "output-dir"
 ```
 
-### Analyzing a .NET Library Plugin
-```bash
-VvvvPluginAnalyzer.exe "C:\vvvv\packages\VL.Skia" markdown
+---
+
+## How It Works
+
+### VL Node Types
+
+vvvv gamma has four principal node kinds defined in `.vl` files:
+
+| Type | VL meaning | State | Typical C# pattern |
+|---|---|---|---|
+| **Process** | Stateful, Create+Update+Dispose lifecycle | Yes | `[ProcessNode]` class |
+| **Operation** | Pure function, no state | No | Static method |
+| **Record** | Immutable value type; operations return new instances | No | `record` |
+| **Class** | Mutable object type; operations modify the instance in-place | Yes | `class` |
+
+The analyzer also handles `Interface` and `Forward` definition kinds (less common).
+
+### VL Category Resolution
+
+Categories in `.vl` files follow a **canvas name hierarchy** — the category path is built from the `Name` attributes of nested `<Canvas>` elements, not from a single `DefaultCategory` attribute:
+
+```xml
+<Canvas CanvasType="FullCategory">          <!-- root: no category -->
+  <Canvas Name="3D">                        <!-- category: "3D" -->
+    <Canvas Name="Transform">              <!-- category: "3D.Transform" -->
+      <Node Name="TransformSRT" .../>      <!-- lives in "3D.Transform" -->
 ```
 
-### Analyzing a Hybrid Plugin
-```bash
-VvvvPluginAnalyzer.exe "C:\vvvv\packages\VL.OpenCV" json
+This is the primary source of category information. `DefaultCategory` attributes and `LastCategoryFullName` on `NodeReference` are used as fallbacks.
+
+### Getter/Setter Synthesis
+
+**Getter and setter nodes are synthesized — they do not appear in the `.vl` XML.**
+
+For every `<Slot>` (field/property) in a Record or Class definition, two nodes are generated at runtime by vvvv:
+
+- **Getter** `Name` → takes the type instance, outputs the field value
+- **Setter** `Set Name` → takes the type instance + new value, outputs the (new) instance
+
+The analyzer synthesizes these directly from `<Slot>` elements without requiring any matching method names. For Records (immutable) the setter returns a new instance; for Classes (mutable) it returns the same instance.
+
+For **.NET assemblies**, each public `get`-accessor becomes a getter node and each `set`-accessor becomes a separate setter node — matching how vvvv surfaces .NET properties.
+
+### VL Type Names
+
+The analyzer maps .NET type names to their vvvv equivalents:
+
+| .NET | vvvv |
+|---|---|
+| `System.Int32` | `Integer32` |
+| `System.Single` | `Float32` |
+| `System.Boolean` | `Boolean` |
+| `System.Int64` | `Integer64` |
+| `System.Double` | `Float64` |
+| `IEnumerable<T>` | `Sequence<T>` |
+
+### Tags
+
+Tags in `.vl` files are **space-separated** lowercase terms (per vvvv Design Guidelines), e.g. `"math filter 2d"`. The analyzer splits on spaces, not commas.
+
+### Version Parsing
+
+Node names can include a version qualifier: `"Split (Count)"` → Name = `"Split"`, Version = `"Count"`. This distinguishes overloaded nodes in the node browser.
+
+### Help File Exclusion
+
+Files inside a `help/` subdirectory and files whose names start with `HowTo`, `Reference`, `Explanation`, `Tutorial`, or `Example` are excluded from analysis — they contain usage examples, not node definitions.
+
+---
+
+## Output Format
+
+The catalog is written to `output/vvvv_nodes_mcp.json` (relative to the VVVVNodeAnalyzer directory):
+
+```json
+{
+  "libraryName": "vvvv Gamma Core",
+  "version": "",
+  "description": "Merged node dictionary from all vvvv Gamma core packages.",
+  "extractionDate": "2026-08-01T09:00:00",
+  "totalNodes": 6415,
+  "categories": ["2D", "2D.Transform", "3D", "3D.Transform", ...],
+  "nodesByType": { "Operation": 1613, "Process": 1160, "Method": 1382, ... },
+  "nodes": [
+    {
+      "name": "TransformSRT",
+      "version": "",
+      "category": "3D.Transform",
+      "fullName": "3D.Transform.TransformSRT",
+      "type": "Operation",
+      "summary": "Returns the input matrix transformed by first scaling, then rotating and finally translating it.",
+      "remarks": "",
+      "tags": [],
+      "isGeneric": true,
+      "hasState": false,
+      "source": "VL.CoreLib",
+      "inputs": [
+        { "name": "Input", "type": "Matrix", "defaultValue": "", "isOptional": false },
+        { "name": "Scaling", "type": "Vector3", "defaultValue": "", "isOptional": false },
+        { "name": "Rotation", "type": "Quaternion", "defaultValue": "", "isOptional": false },
+        { "name": "Translation", "type": "Vector3", "defaultValue": "", "isOptional": false }
+      ],
+      "outputs": [
+        { "name": "Output", "type": "Matrix" }
+      ]
+    }
+  ]
+}
 ```
+
+---
+
+## Single-Package Analysis
+
+```powershell
+dotnet run -- <plugin-directory> [output-format] [output-path]
+```
+
+| Format | Output |
+|---|---|
+| `json` (default) | `analysis.json` — full structural analysis |
+| `markdown` | `analysis.md` — human-readable report |
+| `both` | Both of the above |
+| `nodes-only` | `usable-nodes.json` + `usable-nodes.md` — just the node catalog entries |
+
+---
+
+## Batch Analysis
+
+```powershell
+dotnet run -- batch <packs-directory> <output-directory>
+```
+
+- Analyzes every subdirectory of `<packs-directory>` as a separate package
+- Skips `dependencies/` subdirectory automatically
+- Skips `VL.HDE` and `*_HDE_*` packages (editor-internal nodes, not user API)
+- Merges all results into `output/vvvv_nodes_mcp.json` inside `<output-directory>`
+
+---
+
+## Project Structure
+
+```
+VVVVNodeAnalyzer/
+├── Analyzers/
+│   ├── VLLibraryAnalyzer.cs      # Parses .vl XML → VLNodeDefinition
+│   │                              # - Canvas Name hierarchy for categories
+│   │                              # - AllDirectories scan, help/ excluded
+│   │                              # - Version parsing: "Name (Version)"
+│   │                              # - Tags split by space
+│   │                              # - Getter/setter from Slots (no method lookup)
+│   │                              # - Process: uses Update operation pins
+│   ├── UsableNodeExtractor.cs    # VLNodeDefinition → UsableNode
+│   │                              # - Synthesizes getter/setter from Slots
+│   │                              # - IsOptional from pin visibility attribute
+│   ├── DotNetLibraryAnalyzer.cs  # .dll reflection → nodes
+│   │                              # - VL type names (Integer32, Float32, ...)
+│   │                              # - Properties → separate getter + setter nodes
+│   │                              # - [ProcessNode] attribute detection
+│   ├── PluginAnalyzer.cs         # Top-level orchestrator
+│   ├── HelpSystemAnalyzer.cs     # Help patch scanner
+│   └── PackageAnalyzer.cs        # .nuspec / .csproj metadata reader
+├── Models/
+│   ├── VLNodeDefinition.cs       # VLNodeType enum, VLPin (IsHidden, IsOptional), VLSlot
+│   ├── UsableNode.cs             # UsableNodeType, UsablePin (IsGeneric), Version
+│   ├── VLDocument.cs             # Patches, NodeDefinitions, NugetDependencies
+│   └── NodeSummary.cs            # Flat summary for reporting
+├── Exporters/
+│   ├── UsableNodesExporter.cs    # JSON + Markdown output
+│   └── ...
+├── Extensions/
+│   └── AnalysisExtensions.cs     # Statistics helpers
+└── Program.cs                    # CLI entry point (single + batch modes)
+```
+
+---
 
 ## Requirements
 
-- .NET 8.0 or later
-- Read access to plugin directories
-- For .NET library analysis: assemblies must be loadable in current context
-
-## Limitations
-
-- .NET library analysis requires assemblies to be compatible with the analyzer's runtime
-- Some obfuscated or native libraries may not be analyzable
-- XML documentation parsing is best-effort and may not capture all formatting
+- .NET 8 SDK
+- Read access to the package directories being analyzed
+- No vvvv installation required

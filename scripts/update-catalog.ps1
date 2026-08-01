@@ -1,78 +1,64 @@
 <#
 .SYNOPSIS
-    Re-runs the VVVVNodeAnalyzer against the local vvvv installation to regenerate
-    the MCP node catalog (vvvv_nodes_mcp.json).
+    Regenerates the MCP node catalog (vvvv_nodes_mcp.json) from NuGet.
 
 .DESCRIPTION
-    Scans the vvvv gamma packs/ directory for all user-facing packages and
-    extracts a comprehensive node catalog used by the vvvv-mcp server.
+    Downloads all vvvv packages from NuGet.org (no local vvvv install required),
+    runs VVVVNodeAnalyzer against them, and writes the catalog to:
+      VVVVNodeAnalyzer/output/vvvv_nodes_mcp.json
 
-    Editor-internal packages (VL.HDE and *_HDE_*) are excluded automatically.
-    The output is saved to VVVVNodeAnalyzer/vvvv_nodes_mcp.json and output/.
+    All packages -- including internal vvvv infrastructure (VL.Core, VL.CoreLib,
+    VL.Stride, VL.HDE, etc.) -- are published to NuGet.org, so the catalog is
+    always complete without a local install.
 
-.PARAMETER VvvvInstallDir
-    Path to the vvvv gamma installation. If omitted, the script searches
-    common install locations automatically.
+    Packages already present in packs-community/ are skipped automatically.
+    Use -Force to re-download everything.
+
+.PARAMETER Force
+    Re-download all packages even if already present in packs-community/.
 
 .EXAMPLE
     ./scripts/update-catalog.ps1
 
 .EXAMPLE
-    ./scripts/update-catalog.ps1 -VvvvInstallDir "C:\Program Files\vvvv\vvvv_gamma_7.1-0156-gdf75a792b5-win-x64"
+    ./scripts/update-catalog.ps1 -Force
 #>
 [CmdletBinding()]
 param(
-    [string] $VvvvInstallDir = ""
+    [switch] $Force
 )
 
 $ErrorActionPreference = "Stop"
 
-# Locate vvvv install
-if (-not $VvvvInstallDir) {
-    $candidates = Get-ChildItem "C:\Program Files\vvvv" -Directory -ErrorAction SilentlyContinue |
-        Sort-Object Name -Descending |
-        Select-Object -First 1 -ExpandProperty FullName
-    if ($candidates) { $VvvvInstallDir = $candidates }
-}
-
-if (-not $VvvvInstallDir -or -not (Test-Path $VvvvInstallDir)) {
-    Write-Error "vvvv installation not found. Specify -VvvvInstallDir 'C:\Program Files\vvvv\vvvv_gamma_X.Y...'"
-    return
-}
-
-$packsDir  = Join-Path $VvvvInstallDir "packs"
-if (-not (Test-Path $packsDir)) {
-    Write-Error "packs/ directory not found at $packsDir"
-    return
-}
-
-$repoRoot  = Split-Path $PSScriptRoot -Parent
-$outputDir = Join-Path $repoRoot "VVVVNodeAnalyzer"
-$analyzer  = Join-Path $repoRoot "VVVVNodeAnalyzer\VVVVNodeAnalyzer.csproj"
-
-Write-Host "vvvv install : $VvvvInstallDir"
-Write-Host "packs dir    : $packsDir"
-Write-Host "output dir   : $outputDir"
-Write-Host ""
+$repoRoot     = Split-Path $PSScriptRoot -Parent
+$analyzerProj  = Join-Path $repoRoot "VVVVNodeAnalyzer\VVVVNodeAnalyzer.csproj"
+$analyzerOutput = Join-Path $repoRoot "VVVVNodeAnalyzer\output"
+$communityDir  = Join-Path $repoRoot "packs-community"
+$installScript = Join-Path $PSScriptRoot "install-community-packs.ps1"
 
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
-& dotnet run --project $analyzer -- batch $packsDir $outputDir
+
+# ---- Step 1: Download / update packages from NuGet --------------------------
+
+$forceArg = if ($Force) { @("-Force") } else { @() }
+& powershell -ExecutionPolicy Bypass -File $installScript -SkipAnalysis @forceArg
+if ($LASTEXITCODE -ne 0) { Write-Error "Package download failed (exit $LASTEXITCODE)"; return }
+
+# ---- Step 2: Run VVVVNodeAnalyzer -------------------------------------------
+
+Write-Host ""
+Write-Host "Running VVVVNodeAnalyzer..."
+& dotnet run --project $analyzerProj -- batch $communityDir $analyzerOutput
+if ($LASTEXITCODE -ne 0) { Write-Error "Analyzer failed (exit $LASTEXITCODE)"; return }
+
+# ---- Step 3: Summary --------------------------------------------------------
+
 $sw.Stop()
 
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Analyzer failed with exit code $LASTEXITCODE"
-    return
-}
-
+$json = Get-Content "$analyzerOutput\vvvv_nodes_mcp.json" -Raw | ConvertFrom-Json
 Write-Host ""
-Write-Host "Elapsed: $($sw.Elapsed.TotalSeconds.ToString('F1'))s"
-
-# Copy results to output/
-$outputCopy = Join-Path $repoRoot "output"
-New-Item -ItemType Directory -Force -Path $outputCopy | Out-Null
-Copy-Item "$outputDir\vvvv_nodes_mcp.json" "$outputCopy\vvvv_nodes_mcp.json" -Force
-Copy-Item "$outputDir\vvvv_nodes_mcp.md"   "$outputCopy\vvvv_nodes_mcp.md" -Force
-Write-Host "Catalog copied to output/"
+Write-Host ("Elapsed  : {0}" -f $sw.Elapsed.ToString('mm\:ss'))
+Write-Host ("Catalog  : {0} nodes, {1} categories" -f $json.totalNodes, $json.categories.Count)
+Write-Host "Output   : $analyzerOutput"
 Write-Host ""
-Write-Host "Next: restart the vvvv-mcp server so it picks up the new catalog."
-Write-Host "  (The server reads the catalog from VVVV_MCP_CATALOG env var at startup.)"
+Write-Host "Restart the vvvv-mcp server to pick up the new catalog."

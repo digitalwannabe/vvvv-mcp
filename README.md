@@ -1,49 +1,36 @@
 # vvvv-mcp
 
-A Model Context Protocol (MCP) server for [vvvv gamma](https://vvvv.org) — giving AI agents full read capabilities over vvvv patches, nodes, C# plugins, and SDSL shaders.
+A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for [vvvv gamma](https://vvvv.org) — giving AI agents deep knowledge of vvvv's node API, the ability to read and explain `.vl` patches, and access to the full official documentation.
+
+---
+
+## What it does
+
+- **Search** 6,400+ vvvv nodes by name, category, or keyword across all core packages
+- **Read and explain** `.vl` patch files — parse the dataflow graph and describe it in natural language
+- **Access the full vvvv knowledge base** — the entire Gray Book, all of tebjan's agent skills, and a curated package reference, served as MCP resources
+- **Generate** new `.vl` patches and custom C# nodes (prompt-guided)
+
+The MCP server is designed to be called by AI agents (Claude, Cursor, Copilot, etc.) via the MCP protocol over stdio.
+
+---
 
 ## Quick Start
 
 ### Prerequisites
+
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-- vvvv gamma installed (default: `C:\Program Files\vvvv`)
+- Node catalog file: `VVVVNodeAnalyzer/output/vvvv_nodes_mcp.json` (pre-generated, or regenerate with `scripts/update-catalog.ps1`)
 
 ### Build
-```bash
-cd src
-dotnet build
+
+```powershell
+dotnet build src/VvvvMcp.sln
 ```
 
-### Run
-```bash
-# Set the path to the node catalog
-set VVVV_MCP_CATALOG=path\to\vvvv_nodes_mcp.json
+### Configure an MCP client
 
-# Run the MCP server
-dotnet src/VvvvMcp/bin/Debug/net8.0/VvvvMcp.dll
-```
-
-The server communicates via stdio (JSON-RPC) — it's designed to be launched by an MCP client, not run manually.
-
-### Connect to Claude Desktop
-Add to your Claude Desktop config (`%APPDATA%\Claude\claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "vvvv": {
-      "command": "dotnet",
-      "args": ["x:/_dev/vvvv-mcp/src/VvvvMcp/bin/Debug/net8.0/VvvvMcp.dll"],
-      "env": {
-        "VVVV_MCP_CATALOG": "x:/_dev/vvvv-mcp/VVVVNodeAnalyzer/vvvv_nodes_mcp.json"
-      }
-    }
-  }
-}
-```
-
-### Connect to VS Code / Cursor
-Add to your `.vscode/mcp.json` or settings:
+**VS Code / Cursor** (`.vscode/mcp.json`):
 
 ```json
 {
@@ -53,75 +40,299 @@ Add to your `.vscode/mcp.json` or settings:
       "command": "dotnet",
       "args": ["x:/_dev/vvvv-mcp/src/VvvvMcp/bin/Debug/net8.0/VvvvMcp.dll"],
       "env": {
-        "VVVV_MCP_CATALOG": "x:/_dev/vvvv-mcp/VVVVNodeAnalyzer/vvvv_nodes_mcp.json"
+        "VVVV_MCP_CATALOG":   "x:/_dev/vvvv-mcp/VVVVNodeAnalyzer/output/vvvv_nodes_mcp.json",
+        "VVVV_MCP_KNOWLEDGE": "x:/_dev/vvvv-mcp/knowledge"
       }
     }
   }
 }
 ```
 
+**Claude Desktop** (`%APPDATA%\Claude\claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "vvvv": {
+      "command": "dotnet",
+      "args": ["x:/_dev/vvvv-mcp/src/VvvvMcp/bin/Debug/net8.0/VvvvMcp.dll"],
+      "env": {
+        "VVVV_MCP_CATALOG":   "x:/_dev/vvvv-mcp/VVVVNodeAnalyzer/output/vvvv_nodes_mcp.json",
+        "VVVV_MCP_KNOWLEDGE": "x:/_dev/vvvv-mcp/knowledge"
+      }
+    }
+  }
+}
+```
+
+**Environment variables:**
+
+| Variable | Description |
+|---|---|
+| `VVVV_MCP_CATALOG` | Path to `vvvv_nodes_mcp.json`. Falls back to searching relative to the binary. |
+| `VVVV_MCP_KNOWLEDGE` | Path to the `knowledge/` directory. Falls back to searching relative to the binary. |
+
 ### Test with MCP Inspector
+
 ```bash
 npx @modelcontextprotocol/inspector -- dotnet src/VvvvMcp/bin/Debug/net8.0/VvvvMcp.dll
 ```
 
-## Available Tools
+---
+
+## Tools
+
+### Node Catalog
 
 | Tool | Description |
-|------|-------------|
-| `search_nodes` | Search the vvvv node catalog by name, category, or keyword |
-| `get_node_details` | Get full details of a specific node by exact name |
-| `list_categories` | List all node categories (optionally filtered by prefix) |
-| `list_packages` | List all available vvvv packages |
-| `read_patch` | Parse a `.vl` patch file and return its structured graph |
-| `explain_patch` | Get a natural-language explanation of a patch |
-| `list_patch_dependencies` | List NuGet dependencies of a patch |
-| `read_file` | Read source files (.vl, .cs, .sdsl, .hlsl, .json, etc.) |
-| `list_directory` | Browse project directory structure |
+|---|---|
+| `search_nodes` | Search by name, category, or keyword. Returns nodes ranked by relevance with pins, types, and summaries. |
+| `get_node_details` | Full details for a node by exact name — all pins, types, defaults, source package. |
+| `list_categories` | All category namespaces (e.g. `3D.Transform`, `Stride.Models`), optionally filtered by prefix. |
+| `list_packages` | All packages in the catalog. |
 
-## Available Resources
+### Knowledge Base
 
-| URI | Description |
-|-----|-------------|
-| `vvvv://catalog/stats` | Node catalog statistics |
-| `vvvv://catalog/categories` | Full category list |
+| Tool | Description |
+|---|---|
+| `list_knowledge` | List all 17 knowledge documents with descriptions. |
+| `read_knowledge` | Read the full content of a knowledge document by name. |
+| `search_knowledge` | Full-text search across all knowledge documents with snippet results. |
 
-## Available Prompts
+### Patch Tools
+
+| Tool | Description |
+|---|---|
+| `read_patch` | Parse a `.vl` file and return the structured graph (nodes, pins, links, IOBoxes, dependencies). |
+| `explain_patch` | Natural-language explanation of a parsed patch. |
+| `list_patch_dependencies` | List NuGet dependencies declared in a `.vl` file. |
+| `read_file` | Read any source file (`.vl`, `.cs`, `.sdsl`, `.hlsl`, `.json`, etc.). |
+| `list_directory` | Browse project directory structure. |
+
+---
+
+## Resources
+
+### Knowledge (`vvvv://knowledge/`)
+
+| URI | Content |
+|---|---|
+| `vvvv://knowledge/quickref` | XML cheat sheet: NodeReference patterns, critical .vl rules, VL.CoreLib categories, Stride scene, topic index |
+| `vvvv://knowledge/file-format` | Complete `.vl` XML format reference (from tebjan/vvvv-skills) |
+| `vvvv://knowledge/fundamentals` | Live compilation model, frame-based execution, node categories |
+| `vvvv://knowledge/patching` | Dataflow patterns, regions, channels, event handling, anti-patterns |
+| `vvvv://knowledge/custom-nodes` | `[ProcessNode]` lifecycle, `Update()`, change detection, assembly import |
+| `vvvv://knowledge/shaders` | SDSL TextureFX/DrawFX/ComputeFX, streams system, mixins, GPU patterns |
+| `vvvv://knowledge/dotnet` | .csproj setup, NuGet packages, vector type interop, async, threading |
+| `vvvv://knowledge/channels` | IChannelHub, `[CanBePublished]`, reactive subscriptions, bang channels |
+| `vvvv://knowledge/spreads` | `Spread<T>`, `SpreadBuilder`, mapping, filtering, performance rules |
+| `vvvv://knowledge/node-libraries` | Creating node libraries: ImportAsIs/Namespace/Type, service registration |
+| `vvvv://knowledge/troubleshooting` | Common errors: pin order, missing ImportAsIs, shader mistakes, runtime issues |
+| `vvvv://knowledge/packages` | 230 curated packages from Libraries.xml, organized by category |
+| `vvvv://knowledge/gray-book/language` | Official Gray Book — VL language: nodes, patches, operations, regions, types |
+| `vvvv://knowledge/gray-book/extending` | Official Gray Book — writing nodes, shaders, design guidelines, libraries |
+| `vvvv://knowledge/gray-book/libraries` | Official Gray Book — VL.CoreLib, Stride, collections, reactive, serialization |
+| `vvvv://knowledge/gray-book/hde` | Official Gray Book — editor GUI, node browser, debugging, NuGet management |
+| `vvvv://knowledge/gray-book/best-practice` | Official Gray Book — video, deployment, version control, text rendering |
+| `vvvv://knowledge/gray-book/getting-started` | Official Gray Book — intro for .NET devs, creative coders, beta users |
+
+### Catalog (`vvvv://catalog/`)
+
+| URI | Content |
+|---|---|
+| `vvvv://catalog/stats` | Node count by type, packages, top categories |
+| `vvvv://catalog/categories` | Full sorted category list |
+
+---
+
+## Prompts
 
 | Prompt | Description |
-|--------|-------------|
-| `explain_vl_patch` | Guided workflow for explaining a VL patch |
-| `create_vl_patch` | Template for creating new VL patches |
-| `create_csharp_node` | Template for creating custom C# nodes |
+|---|---|
+| `explain_vl_patch` | Guided workflow for reading and explaining a `.vl` patch file |
+| `create_vl_patch` | Step-by-step guidance for generating a new `.vl` patch from a description |
+| `create_csharp_node` | Template and guidance for creating a custom C# node |
+
+---
+
+## Repository Structure
+
+```
+vvvv-mcp/
+│
+├── src/                          # MCP server (.NET 8)
+│   ├── VvvvMcp.sln
+│   ├── VvvvMcp/                  # Server entry point
+│   │   ├── Program.cs
+│   │   ├── Tools/                # search_nodes, read_patch, read_knowledge, ...
+│   │   ├── Resources/            # vvvv://knowledge/* and vvvv://catalog/*
+│   │   └── Prompts/              # explain_vl_patch, create_vl_patch, ...
+│   ├── VvvvMcp.Core/             # Shared library
+│   │   ├── Models/               # NodeModels, PatchModels, CatalogModels
+│   │   └── Services/
+│   │       ├── NodeCatalogService    # Node search & indexing
+│   │       ├── KnowledgeService      # Knowledge document loading & search
+│   │       ├── PatchReaderService    # .vl XML parser
+│   │       └── PatchExplainerService # Natural language patch descriptions
+│   └── VvvvMcp.Tests/            # Smoke tests
+│
+├── VVVVNodeAnalyzer/             # Node catalog generator
+│   ├── Analyzers/
+│   │   ├── VLLibraryAnalyzer.cs  # Parses .vl XML → VLNodeDefinition
+│   │   ├── UsableNodeExtractor.cs # VLNodeDefinition → UsableNode
+│   │   ├── DotNetLibraryAnalyzer.cs # .dll reflection → nodes
+│   │   └── PluginAnalyzer.cs     # Top-level orchestrator
+│   ├── Models/                   # VLNodeDefinition, UsableNode, VLDocument
+│   ├── Exporters/                # JSON + Markdown output
+│   └── output/
+│       ├── vvvv_nodes_mcp.json   # Generated catalog
+│       └── vvvv_nodes_mcp.md
+│
+├── knowledge/                    # MCP knowledge base (677 KB, 24 files)
+│   ├── The-Gray-Book/            # Git submodule: vvvv/The-Gray-Book
+│   ├── tebjan-vvvv-skills/       # Git submodule: tebjan/vvvv-skills
+│   ├── gray-book-*.md            # Generated: Gray Book by section
+│   ├── vvvv-*.md / vl-*.md       # Generated: tebjan's skill files
+│   ├── vl-quickref.md            # Manual: XML cheat sheet + topic index
+│   ├── vvvv-packages.md          # Generated: from Libraries.xml
+│   └── MANIFEST.md               # What was generated, from which sources
+│
+├── packs-community/              # Downloaded NuGet packages (gitignored)
+│   └── VL.PackageName.x.y.z/    # Extracted nupkg — structure matches vvvv packs/
+│
+├── output/                       # Root-level output copy (optional, gitignored)
+│   └── vvvv_nodes_mcp.json
+│
+├── scripts/
+│   ├── build-knowledge.ps1       # Regenerate knowledge/ from submodules + GitHub
+│   ├── install-community-packs.ps1 # Download all vvvv NuGet packages
+│   └── update-catalog.ps1        # Full pipeline: download → analyze → output
+│
+└── .vscode/
+    └── mcp.json                  # VS Code MCP client configuration
+```
+
+---
+
+## Node Catalog
+
+### Generation
+
+The catalog is generated by `VVVVNodeAnalyzer` from the actual vvvv NuGet packages. **No local vvvv installation required** — all packages are available on NuGet.org.
+
+```powershell
+# Download all packages and regenerate the catalog:
+./scripts/update-catalog.ps1
+
+# Force re-download (e.g. after a new vvvv release):
+./scripts/update-catalog.ps1 -Force
+```
+
+### Coverage
+
+The current catalog (`VVVVNodeAnalyzer/output/vvvv_nodes_mcp.json`) covers **38 packages** with **~6,400 user-facing nodes** across **374 categories**:
+
+| Package group | Packages | Notable nodes |
+|---|---|---|
+| Core | VL.CoreLib, VL.CoreLib.Windows | Math, Collections, Reactive, Animation, 3D, IO |
+| 3D Rendering | VL.Stride, VL.Stride.Runtime, VL.Stride.TextureFX, VL.Stride.Windows | SceneWindow, RootScene, Entity, Models, Materials, Cameras |
+| 2D Rendering | VL.Skia | Canvas, Layers, Shapes, Text, Images |
+| GUI | VL.ImGui, VL.ImGui.Skia, VL.ImGui.Stride | Buttons, Sliders, TextInput, ColorPicker |
+| Audio | VL.Audio, VL.Audio.UI | Buffer, BufferPlayer, DSP, AudioSignal |
+| Networking | VL.IO.OSC, VL.IO.Midi, VL.IO.ArtNet, VL.IO.Redis, VL.IO.WebSocket, VL.IO.TUIO, VL.IO.OSCQuery | Send/Receive nodes for each protocol |
+| Serialization | VL.Serialization.Raw, VL.Serialization.MessagePack, VL.Serialization.FSPickler | Binary/MessagePack/FSPickler serialization |
+| Platform | VL.Core, VL.AppServices, VL.TPL.Dataflow, VL.Video | Core services, TPL Dataflow, video |
+
+### Node types in the catalog
+
+| Type | Count | Description |
+|---|---|---|
+| Operation | ~1,600 | Stateless pure functions (e.g. `+`, `TransformSRT`, `Lerp`) |
+| Process | ~1,200 | Stateful nodes with Create+Update+Dispose lifecycle |
+| Method | ~1,400 | Member operations on a type |
+| Setter | ~1,000 | Synthesized from type fields/properties |
+| Getter | ~1,000 | Synthesized from type fields/properties |
+| Class | ~200 | Mutable object types |
+| Record | ~90 | Immutable value types |
+
+### Extending the catalog
+
+To add community packages (VL.Fuse, VL.OpenCV, VL.MediaPipe, etc.):
+
+```powershell
+# Download ALL community packages from Libraries.xml + core packages:
+./scripts/install-community-packs.ps1
+
+# Then run analysis on the downloaded packages:
+dotnet run --project VVVVNodeAnalyzer/VVVVNodeAnalyzer.csproj -- batch packs-community VVVVNodeAnalyzer
+```
+
+---
+
+## Knowledge Base
+
+The knowledge base lives in `knowledge/` and is served as MCP resources. It is built from two git submodules and one live-fetched source:
+
+| Source | Content | Files |
+|---|---|---|
+| `knowledge/The-Gray-Book` (submodule) | Official vvvv documentation | `gray-book-*.md` (7 sections, ~420 KB) |
+| `knowledge/tebjan-vvvv-skills` (submodule) | Expert agent skill files | `vvvv-*.md` / `vl-*.md` (14 files, ~200 KB) |
+| Libraries.xml (fetched live) | Official package catalog | `vvvv-packages.md` |
+| Manual | XML cheat sheet | `vl-quickref.md` |
+
+**To regenerate after submodule updates:**
+
+```powershell
+git submodule update --remote --merge
+./scripts/build-knowledge.ps1
+```
+
+The script regenerates all 22 generated files. The one manually maintained file (`vl-quickref.md`) is never overwritten.
+
+**Images in the Gray Book:** The Gray Book contains ~239 diagrams and screenshots. In the generated markdown files, image references are replaced with `[IMAGE: filename -- "alt text"]` markers so the LLM knows visual content exists. Future work: use vision models to describe diagrams inline.
+
+---
 
 ## Architecture
 
 ```
-src/
-├── VvvvMcp.sln
-├── VvvvMcp/                    # MCP server (stdio console app)
-│   ├── Program.cs              # Entry point, DI, catalog loading
-│   ├── Tools/                  # MCP tool definitions
-│   ├── Resources/              # MCP resource definitions
-│   └── Prompts/                # MCP prompt templates
-└── VvvvMcp.Core/               # Shared library
-    ├── Models/                 # Data models (nodes, patches, catalog)
-    └── Services/               # Business logic
-        ├── NodeCatalogService  # Node search & indexing
-        ├── PatchReaderService  # VL XML parser
-        └── PatchExplainerService # Natural language descriptions
+MCP Client (Claude / Cursor / Copilot)
+         │  stdio JSON-RPC
+         ▼
+┌─────────────────────────────────────────┐
+│            VvvvMcp (server)              │
+│                                          │
+│  Tools          Resources    Prompts     │
+│  search_nodes   knowledge/*  explain_vl  │
+│  read_patch     catalog/*    create_vl   │
+│  read_knowledge              create_cs   │
+│  ...                                     │
+│                                          │
+│  NodeCatalogService   (6,400 nodes)      │
+│  KnowledgeService     (677 KB docs)      │
+│  PatchReaderService   (.vl XML)          │
+│  PatchExplainerService                   │
+└─────────────────────────────────────────┘
+         │                    │
+         ▼                    ▼
+vvvv_nodes_mcp.json       knowledge/*.md
+(VVVVNodeAnalyzer/output/  (generated by
+VVVVNodeAnalyzer)        build-knowledge.ps1)
 ```
 
-## Node Catalog
-
-The server loads `vvvv_nodes_mcp.json` (generated by VVVVNodeAnalyzer) containing **34,000 nodes** from **801 packages** — all built-in vvvv gamma libraries.
+---
 
 ## Roadmap
 
-- **Phase 1** ✅ Read-only tools (node search, patch reading, explanations)
-- **Phase 2** 🔜 Write capabilities (create/edit patches, generate C# plugins, SDSL shaders)
-- **Phase 3** 🔜 Live vvvv bridge (console output, rendering snapshots, hot-reload)
-- **Phase 4** 🔜 Continuous improvement agents (forum scraper, patch analyzer, knowledge updater)
+- **Phase 1** ✅ Read-only tools — node search, patch reading, natural language explanations
+- **Phase 1.5** ✅ Knowledge base — full Gray Book, tebjan's skills, 677 KB of vvvv documentation
+- **Phase 1.6** ✅ Analyzer improvements — correct VL category resolution, getter/setter synthesis, VL type names, version parsing, AllDirectories scan
+- **Phase 2** 🔜 Write capabilities — create/edit `.vl` patches, generate C# plugins and SDSL shaders
+- **Phase 3** 🔜 Live vvvv bridge — console output capture, rendering snapshots (Spout), hot-reload feedback loop
+- **Phase 4** 🔜 Community ecosystem — analyze all Libraries.xml packages, index help patches as examples, per-node usage lookup
+- **Phase 5** 🔜 Continuous improvement agents — forum/changelog scraper, broken-patch learner, knowledge updater
+
+---
 
 ## License
 
