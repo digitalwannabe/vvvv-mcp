@@ -81,8 +81,10 @@ jobs:
           user: digital.wannabe
 
       - name: Push to NuGet.org
-        run: >
-          dotnet nuget push nupkg/*.nupkg
-          --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
-          --source https://api.nuget.org/v3/index.json
-          --skip-duplicate
+        shell: pwsh
+        run: |
+          $nupkg = Get-ChildItem nupkg/*.nupkg | Select-Object -First 1 -ExpandProperty FullName
+          dotnet nuget push $nupkg `
+            --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} `
+            --source https://api.nuget.org/v3/index.json `
+            --skip-duplicate
