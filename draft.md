@@ -50,7 +50,7 @@ create a suite of challenges (=hard vvvv patches) and let the mcp do it to test 
 
 # phase 3: true remote control of a running vvvv instance
 
-*research findings — not yet implemented*
+*initial implementation scaffolded — needs testing inside vvvv*
 
 ## the question
 
@@ -212,3 +212,51 @@ other stuff:
 - since vvvv gamma is .net based, a lot of programming patterns from standard C#/.NET development apply, a lot of .net/c# libraries run out of the box, debugging can be done in vs, etc. it would make sense when our vvvv mcp is also a .net expert, making use of skills or similar, eg https://github.com/wieslawsoltes/Performance-Skill
 same for hlsl, since sdsl is "only" a superset
 not sure if we will also need an xml expert in the mix, we will see....
+
+
+---
+
+## phase 3 implementation status
+
+### what's built (2026-08-01)
+
+**`VL.MCP.Bridge/`** — vvvv source-nuget package (proper naming convention):
+- `VL.MCP.Bridge.nuspec` — package metadata for source-nuget recognition
+- `VL.MCP.Bridge.vl` — main entry point document (forwards C# nodes under `MCP.Bridge` category)
+- `VL.MCP.Bridge.HDE.vl` — editor extension (auto-starts bridge when loaded in editor)
+- `src/VL.MCP.Bridge.csproj` — C# project
+- `src/MCPBridgeServer.cs` — `[ProcessNode]` that starts ASP.NET Kestrel on localhost:7123
+- `src/BridgeState.cs` — reflection-based access to VL.Lang session/solution/documents at runtime
+
+**`src/VvvvMcp.Core/Services/BridgeClientService.cs`** — HTTP client in the MCP server:
+- auto-discovers bridge at localhost:7123
+- methods: PingAsync, GetDocumentsAsync, GetErrorsAsync, GetStateAsync, ReloadFileAsync
+
+**`src/VvvvMcp/Tools/BridgeTools.cs`** — 5 new MCP tools:
+- `check_bridge_connection` — is vvvv alive?
+- `get_running_documents` — which .vl files are open?
+- `get_vvvv_errors` — compilation errors with locations
+- `reload_file_in_vvvv` — force hot-reload after external edit
+- `get_vvvv_state` — running/paused/framecount/uptime
+
+### HTTP endpoints (bridge → mcp)
+
+| method | path | returns |
+|--------|------|---------|
+| GET | /api/ping | version, status, timestamp |
+| GET | /api/documents | list of open .vl files |
+| GET | /api/errors | compilation errors + severity |
+| GET | /api/state | running, paused, framecount |
+| POST | /api/reload | trigger file reload (body: {filePath}) |
+| GET | /api/packages | referenced packages |
+| GET | /api/channels | public channels |
+
+### next steps to get this running in vvvv
+
+1. **load the package in vvvv** — start vvvv with `--package-repositories "X:/_dev/vvvv-mcp" --editable-packages "VL.MCP.Bridge"`  
+   (the package-repository path is the PARENT of the `VL.MCP.Bridge\` folder)
+2. **reference VL.MCP.Bridge** in your project via Document > Dependencies > VL Nugets
+3. **test reflection paths** — VL.Lang API shape may differ from what we guessed; the code uses try/catch everywhere so it won't crash, but the document/error enumeration needs to find the right properties
+4. **test the HDE.vl file** — it should auto-start the bridge; check that the C# node reference resolves correctly
+5. **add more endpoints** — once basic connection works, expand: live pin values, navigate-to-node, install packages, console output stream
+6. **package as NuGet** — `dotnet pack` the project or use `nuget pack VL.MCP.Bridge.nuspec` for distribution

@@ -22,3 +22,10 @@ knowledge/templates/csharp/bin/
 knowledge/templates/csharp/obj/
 knowledge/templates/sdsl/EditShaders/obj/
 knowledge/templates/sdsl/EditShaders/bin/
+
+# VL.MCP.Bridge.HDE build artifacts
+/VL.MCP.Bridge.HDE/src/bin/
+/VL.MCP.Bridge.HDE/src/obj/
+
+# Old location (can be removed after cleanup)
+/src/VL.MCP.Bridge/

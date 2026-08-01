@@ -1,0 +1,193 @@
+using System.ComponentModel;
+using System.Text.Json;
+using ModelContextProtocol.Server;
+using VvvvMcp.Core.Services;
+
+namespace VvvvMcp.Tools;
+
+/// <summary>
+/// MCP tools that communicate with a live vvvv instance via the VL.MCP.Bridge.
+/// These tools require the bridge to be running inside vvvv (VL.MCP.Bridge.HDE.vl loaded).
+/// They degrade gracefully when the bridge is not available.
+/// </summary>
+[McpServerToolType]
+public class BridgeTools
+{
+    private readonly BridgeClientService _bridge;
+
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true
+    };
+
+    public BridgeTools(BridgeClientService bridge)
+    {
+        _bridge = bridge;
+    }
+
+    /// <summary>
+    /// Check if a live vvvv instance is connected via the MCP bridge.
+    /// Returns connection status, vvvv version info, and uptime.
+    /// </summary>
+    [McpServerTool(Name = "check_bridge_connection"), Description(
+        "Check if a live vvvv gamma instance is connected. " +
+        "Returns bridge status and vvvv runtime info. " +
+        "Use this first to verify if live tools (documents, errors, reload) are available.")]
+    public async Task<string> CheckBridgeConnection()
+    {
+        var available = await _bridge.CheckAvailabilityAsync();
+        if (!available)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                connected = false,
+                message = "No vvvv instance detected. Make sure vvvv is running with VL.MCP.Bridge.HDE.vl loaded. " +
+                          "The bridge listens on localhost:7123 by default (configurable via VVVV_MCP_BRIDGE_PORT env var)."
+            }, JsonOpts);
+        }
+
+        var ping = await _bridge.PingAsync();
+        var state = await _bridge.GetStateAsync();
+
+        return JsonSerializer.Serialize(new
+        {
+            connected = true,
+            bridge = ping,
+            runtime = state
+        }, JsonOpts);
+    }
+
+    /// <summary>
+    /// List all documents currently open in the running vvvv instance.
+    /// </summary>
+    [McpServerTool(Name = "get_running_documents"), Description(
+        "List all .vl documents currently open in the running vvvv instance. " +
+        "Shows file paths and which document is active. " +
+        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+    public async Task<string> GetRunningDocuments()
+    {
+        if (!await _bridge.CheckAvailabilityAsync())
+            return NoBridgeMessage();
+
+        var docs = await _bridge.GetDocumentsAsync();
+        if (docs is null || docs.Count == 0)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                documents = Array.Empty<object>(),
+                message = "No documents reported (bridge may still be initializing)"
+            }, JsonOpts);
+        }
+
+        return JsonSerializer.Serialize(new { documents = docs }, JsonOpts);
+    }
+
+    /// <summary>
+    /// Get current compilation errors and warnings from the running vvvv instance.
+    /// </summary>
+    [McpServerTool(Name = "get_vvvv_errors"), Description(
+        "Get current compilation errors and warnings from the running vvvv instance. " +
+        "Returns error messages with severity and source location. " +
+        "Use after editing a .vl file to check if changes compiled successfully. " +
+        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+    public async Task<string> GetVvvvErrors()
+    {
+        if (!await _bridge.CheckAvailabilityAsync())
+            return NoBridgeMessage();
+
+        var errors = await _bridge.GetErrorsAsync();
+        if (errors is null || errors.Count == 0)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                errors = Array.Empty<object>(),
+                message = "No compilation errors — patch is clean!"
+            }, JsonOpts);
+        }
+
+        var errorCount = errors.Count(e =>
+            e.Severity?.Contains("Error", StringComparison.OrdinalIgnoreCase) ?? true);
+        var warningCount = errors.Count(e =>
+            e.Severity?.Contains("Warning", StringComparison.OrdinalIgnoreCase) ?? false);
+
+        return JsonSerializer.Serialize(new
+        {
+            summary = $"{errorCount} error(s), {warningCount} warning(s)",
+            errors
+        }, JsonOpts);
+    }
+
+    /// <summary>
+    /// Request the running vvvv instance to reload a file from disk.
+    /// </summary>
+    [McpServerTool(Name = "reload_file_in_vvvv"), Description(
+        "Tell the running vvvv instance to reload a specific .vl file from disk. " +
+        "Use after editing a file externally (e.g. via XML manipulation) to force vvvv to pick up the changes. " +
+        "Note: vvvv usually hot-reloads on file save automatically, but this ensures it. " +
+        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+    public async Task<string> ReloadFileInVvvv(
+        [Description("Absolute path to the .vl file to reload")] string filePath)
+    {
+        if (!await _bridge.CheckAvailabilityAsync())
+            return NoBridgeMessage();
+
+        var result = await _bridge.ReloadFileAsync(filePath);
+        if (result is null)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                success = false,
+                error = "Bridge did not respond to reload request"
+            }, JsonOpts);
+        }
+
+        return JsonSerializer.Serialize(result, JsonOpts);
+    }
+
+    /// <summary>
+    /// Get the runtime state of the vvvv instance (running, paused, frame count).
+    /// </summary>
+    [McpServerTool(Name = "get_vvvv_state"), Description(
+        "Get the runtime state of the running vvvv instance — " +
+        "whether the patch is running or paused, frame count, and uptime. " +
+        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+    public async Task<string> GetVvvvState()
+    {
+        if (!await _bridge.CheckAvailabilityAsync())
+            return NoBridgeMessage();
+
+        var state = await _bridge.GetStateAsync();
+        if (state is null)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                error = "Could not retrieve state from bridge"
+            }, JsonOpts);
+        }
+
+        return JsonSerializer.Serialize(new
+        {
+            isRunning = state.IsRunning,
+            isPaused = state.IsPaused,
+            frameCount = state.FrameCount,
+            uptimeSeconds = state.UptimeSeconds,
+            uptime = TimeSpan.FromSeconds(state.UptimeSeconds).ToString(@"hh\:mm\:ss")
+        }, JsonOpts);
+    }
+
+    // ── Helper ────────────────────────────────────────────────────────────────
+
+    private static string NoBridgeMessage()
+    {
+        return JsonSerializer.Serialize(new
+        {
+            connected = false,
+            error = "No vvvv bridge detected. These live tools require:\n" +
+                    "1. vvvv gamma is running\n" +
+                    "2. VL.MCP.Bridge.HDE.vl is loaded (reference the VL.MCP.Bridge package)\n" +
+                    "3. Bridge server is enabled (default: localhost:7123)\n\n" +
+                    "The other vvvv-mcp tools (patch reading, node search, etc.) work without the bridge."
+        }, JsonOpts);
+    }
+}

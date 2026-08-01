@@ -1,20 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-
     <!-- dotnet global tool -->
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>vvvv-mcp</ToolCommandName>
-
     <!-- NuGet package metadata -->
     <PackageId>vvvv-mcp</PackageId>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <Title>vvvv-mcp</Title>
-    <Description>MCP server for vvvv gamma — node search (6,400+ nodes), patch reading and explanation, and the full Gray Book knowledge base. Works without a vvvv installation. Run `vvvv-mcp --setup` after install to configure your AI client.</Description>
+    <Description>MCP server for vvvv gamma â€” node search (6,400+ nodes), patch reading and explanation, and the full Gray Book knowledge base. Works without a vvvv installation. Run `vvvv-mcp --setup` after install to configure your AI client.</Description>
     <Authors>digital.wannabe</Authors>
     <PackageTags>vvvv;vvvv-gamma;mcp;modelcontextprotocol;ai;agent;visual-programming</PackageTags>
     <PackageProjectUrl>https://github.com/digitalwannabe/mcp-gamma-server</PackageProjectUrl>
@@ -24,38 +21,25 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <Copyright>digital.wannabe</Copyright>
   </PropertyGroup>
-
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol" Version="0.*" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.*" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.*" />
   </ItemGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\VvvvMcp.Core\VvvvMcp.Core.csproj" />
   </ItemGroup>
-
   <!--
     Bundle the node catalog and knowledge files into the tool directory only.
     PackagePath="tools/net8.0/any/" ensures they land next to the binary
     and are found via AppContext.BaseDirectory, without polluting content/.
   -->
   <ItemGroup>
-    <None Include="..\..\VVVVNodeAnalyzer\output\vvvv_nodes_mcp.json"
-          CopyToOutputDirectory="PreserveNewest"
-          Link="vvvv_nodes_mcp.json"
-          Pack="true"
-          PackagePath="tools/net8.0/any/" />
-    <None Include="..\..\knowledge\*.md"
-          CopyToOutputDirectory="PreserveNewest"
-          Link="knowledge\%(Filename)%(Extension)"
-          Pack="true"
-          PackagePath="tools/net8.0/any/knowledge/" />
+    <None Include="..\..\VVVVNodeAnalyzer\output\vvvv_nodes_mcp.json" CopyToOutputDirectory="PreserveNewest" Link="vvvv_nodes_mcp.json" Pack="true" PackagePath="tools/net8.0/any/" />
+    <None Include="..\..\knowledge\*.md" CopyToOutputDirectory="PreserveNewest" Link="knowledge\%(Filename)%(Extension)" Pack="true" PackagePath="tools/net8.0/any/knowledge/" />
   </ItemGroup>
-
   <!-- README for NuGet package page -->
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
-
 </Project>

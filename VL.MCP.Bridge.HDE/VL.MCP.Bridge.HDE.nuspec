@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+  <metadata>
+    <id>VL.MCP.Bridge.HDE</id>
+    <version>0.1.0-alpha</version>
+    <title>VL.MCP.Bridge.HDE</title>
+    <authors>digital.wannabe</authors>
+    <description>Editor extension that bridges vvvv gamma to the vvvv-mcp AI tool server. Automatically runs an HTTP server inside the editor, exposing session state, compilation errors, and live values to external MCP tools.</description>
+    <license type="expression">MIT</license>
+    <tags>vvvv vvvv-gamma mcp bridge remote-control ai hde extension</tags>
+    <projectUrl>https://github.com/digitalwannabe/mcp-gamma-server</projectUrl>
+    <dependencies>
+      <dependency id="VL.CoreLib" version="2025.7.0" />
+      <dependency id="VL.HDE" version="2025.7.0" />
+    </dependencies>
+  </metadata>
+</package>
