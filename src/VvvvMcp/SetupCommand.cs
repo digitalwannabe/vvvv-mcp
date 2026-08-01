@@ -24,10 +24,17 @@ public static class SetupCommand
         Console.WriteLine($"Knowledge: {knowledgePath ?? "(not found)"}");
         Console.WriteLine();
 
-        // Build the environment variables block
+        // Build the environment variables block.
+        // When running as an installed global tool, the catalog and knowledge paths
+        // are auto-detected at runtime from AppContext.BaseDirectory, so we must NOT
+        // bake version-specific paths into MCP client configs — they would become
+        // stale after every `dotnet tool update`.
         var env = new Dictionary<string, string>();
-        if (catalogPath  is not null) env["VVVV_MCP_CATALOG"]   = catalogPath;
-        if (knowledgePath is not null) env["VVVV_MCP_KNOWLEDGE"] = knowledgePath;
+        if (!IsInstalledAsTool())
+        {
+            if (catalogPath  is not null) env["VVVV_MCP_CATALOG"]   = catalogPath;
+            if (knowledgePath is not null) env["VVVV_MCP_KNOWLEDGE"] = knowledgePath;
+        }
 
         var configured = new List<string>();
 

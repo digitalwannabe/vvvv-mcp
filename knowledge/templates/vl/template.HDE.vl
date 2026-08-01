@@ -220,6 +220,5 @@
   <NugetDependency Id="RZ1cz496dpgNj0r1GJdwKs" Location="VL.HDE" Version="2025.7.1-0156-gdf75a792b5" />
   <NugetDependency Id="IdDPloCqQavPJlhM5jY3Lb" Location="VL.Skia" Version="2025.7.1-0156-gdf75a792b5" />
   <NugetDependency Id="U4rnJ58Je0dMe7sTAiWUhv" Location="VL.CoreLib.Windows" Version="2025.7.1-0156-gdf75a792b5" />
-  <ProjectDependency Id="B6dajRAQfwPO2jhJNMUk6b" Location="X:/_dev/vvvv-mcp/knowledge/templates/csharp/Template/Template.csproj" />
   <NugetDependency Id="J689K8XTpaCN1lCcNcH8Ga" Location="VL.Stride" Version="2025.7.1-0156-gdf75a792b5" />
 </Document>

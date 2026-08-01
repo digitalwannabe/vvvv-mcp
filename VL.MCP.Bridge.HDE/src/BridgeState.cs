@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Reflection;
 using VL.Core;
 
@@ -5,8 +6,7 @@ namespace VL.MCP.Bridge;
 
 /// <summary>
 /// Holds a snapshot of the current vvvv editor state, updated each frame.
-/// Uses reflection-based access to VL.Lang APIs since those types are only
-/// loaded at runtime inside the vvvv editor (not compile-time dependencies).
+/// Uses reflection to access VL.Lang/VL.Model APIs (only available at runtime inside vvvv).
 /// </summary>
 internal class BridgeState
 {
@@ -21,95 +21,79 @@ internal class BridgeState
     public List<PackageInfo> Packages { get; set; } = new();
     public List<ChannelInfo> Channels { get; set; } = new();
 
-    // Cache reflection lookups
-    private Type? _sessionType;
+    // Reflection cache
     private object? _session;
-    private bool _reflectionInitialized;
-    private bool _reflectionFailed;
+    private bool _initialized;
+    private bool _failed;
 
-    /// <summary>
-    /// Try to get the VL session via reflection.
-    /// VL.Lang is loaded at runtime in the vvvv process, not at compile time.
-    /// </summary>
-    private object? GetSession(AppHost appHost)
+    // Cached property accessors
+    private PropertyInfo? _currentSolutionProp;
+    private PropertyInfo? _docsProp;
+    private PropertyInfo? _messageChannelProp;
+    private PropertyInfo? _messageChannelValueProp;
+    private PropertyInfo? _userRuntimeProp;
+    private PropertyInfo? _runtimeMessagesProp;
+    private PropertyInfo? _runtimeModeProp;
+    private PropertyInfo? _runtimeFrameProp;
+    private PropertyInfo? _availableNugetsProp;
+
+    private void Initialize()
     {
-        if (_reflectionFailed) return null;
+        if (_initialized) return;
+        _initialized = true;
 
-        if (!_reflectionInitialized)
+        try
         {
-            _reflectionInitialized = true;
-            try
-            {
-                // Strategy 1: Look for VL.Lang assembly loaded in the process
-                var vlLangAssembly = AppDomain.CurrentDomain.GetAssemblies()
-                    .FirstOrDefault(a => a.GetName().Name == "VL.Lang");
+            var vlLangAsm = AppDomain.CurrentDomain.GetAssemblies()
+                .FirstOrDefault(a => a.GetName().Name == "VL.Lang");
+            if (vlLangAsm is null) { _failed = true; return; }
 
-                if (vlLangAssembly is not null)
-                {
-                    _sessionType = vlLangAssembly.GetType("VL.Lang.VLSession")
-                                ?? vlLangAssembly.GetType("VL.Lang.Session");
+            var sessionType = vlLangAsm.GetType("VL.Model.VLSession");
+            if (sessionType is null) { _failed = true; return; }
 
-                    if (_sessionType is not null)
-                    {
-                        // Try to resolve from ServiceRegistry
-                        _session = appHost.Services.GetService(_sessionType);
-                    }
-                }
+            var instanceProp = sessionType.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static);
+            _session = instanceProp?.GetValue(null);
+            if (_session is null) { _failed = true; return; }
 
-                // Strategy 2: Look for a Session property on AppHost via reflection
-                if (_session is null)
-                {
-                    var sessionProp = appHost.GetType().GetProperty("Session",
-                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                    if (sessionProp is not null)
-                    {
-                        _session = sessionProp.GetValue(appHost);
-                        _sessionType = _session?.GetType();
-                    }
-                }
+            var sType = _session.GetType();
 
-                if (_session is null)
-                {
-                    _reflectionFailed = true;
-                }
-            }
-            catch
-            {
-                _reflectionFailed = true;
-            }
+            // Cache property lookups
+            _currentSolutionProp = sType.GetProperty("CurrentSolution");
+            _messageChannelProp = sType.GetProperty("LatestMessagesFromCompiler");
+            _userRuntimeProp = sType.GetProperty("UserRuntime");
+            _availableNugetsProp = sType.GetProperty("AvailableNugets");
         }
-
-        return _session;
+        catch
+        {
+            _failed = true;
+        }
     }
 
     public void UpdateDocuments(AppHost appHost)
     {
-        var docs = new List<DocumentInfo>();
+        Initialize();
+        if (_failed || _session is null) return;
 
+        var docs = new List<DocumentInfo>();
         try
         {
-            var session = GetSession(appHost);
-            if (session is null) return;
-
-            // Try: session.CurrentSolution.Documents
-            var solutionProp = _sessionType?.GetProperty("CurrentSolution",
-                BindingFlags.Public | BindingFlags.Instance);
-            var solution = solutionProp?.GetValue(session);
+            var solution = _currentSolutionProp?.GetValue(_session);
             if (solution is null) return;
 
-            var docsProp = solution.GetType().GetProperty("Documents",
-                BindingFlags.Public | BindingFlags.Instance);
-            var docsEnumerable = docsProp?.GetValue(solution) as System.Collections.IEnumerable;
-            if (docsEnumerable is null) return;
+            // Cache the Documents property on Solution
+            _docsProp ??= solution.GetType().GetProperty("Documents");
+            var docsEnum = _docsProp?.GetValue(solution) as IEnumerable;
+            if (docsEnum is null) return;
 
-            foreach (var doc in docsEnumerable)
+            foreach (var doc in docsEnum)
             {
                 var docType = doc.GetType();
-                var filePath = docType.GetProperty("FilePath")?.GetValue(doc)?.ToString()
-                            ?? docType.GetProperty("Path")?.GetValue(doc)?.ToString();
+                var filePath = docType.GetProperty("FilePath")?.GetValue(doc)?.ToString();
                 var name = docType.GetProperty("Name")?.GetValue(doc)?.ToString()
                         ?? Path.GetFileName(filePath ?? "unknown");
-                var isActive = docType.GetProperty("IsActive")?.GetValue(doc) as bool? ?? false;
+                var isSaved = docType.GetProperty("IsSaved")?.GetValue(doc) as bool? ?? true;
+                var isChanged = docType.GetProperty("IsChanged")?.GetValue(doc) as bool? ?? false;
+                var isReadOnly = docType.GetProperty("IsReadOnly")?.GetValue(doc) as bool? ?? false;
 
                 if (filePath is not null)
                 {
@@ -117,90 +101,153 @@ internal class BridgeState
                     {
                         Name = name,
                         FilePath = filePath,
-                        IsActive = isActive
+                        IsSaved = isSaved,
+                        IsChanged = isChanged,
+                        IsReadOnly = isReadOnly
                     });
                 }
             }
         }
-        catch { /* State collection should never crash */ }
+        catch { }
 
         Documents = docs;
     }
 
     public void UpdateErrors(AppHost appHost)
     {
-        var errors = new List<ErrorInfo>();
+        Initialize();
+        if (_failed || _session is null) return;
 
+        var errors = new List<ErrorInfo>();
         try
         {
-            var session = GetSession(appHost);
-            if (session is null) return;
-
-            var solutionProp = _sessionType?.GetProperty("CurrentSolution",
-                BindingFlags.Public | BindingFlags.Instance);
-            var solution = solutionProp?.GetValue(session);
-            if (solution is null) return;
-
-            // Look for Messages, Errors, or Diagnostics property
-            var messagesProp = solution.GetType().GetProperty("Messages",
-                BindingFlags.Public | BindingFlags.Instance)
-                ?? solution.GetType().GetProperty("Errors",
-                BindingFlags.Public | BindingFlags.Instance)
-                ?? solution.GetType().GetProperty("Diagnostics",
-                BindingFlags.Public | BindingFlags.Instance);
-
-            var messagesEnumerable = messagesProp?.GetValue(solution) as System.Collections.IEnumerable;
-            if (messagesEnumerable is null) return;
-
-            foreach (var msg in messagesEnumerable)
+            // Compilation messages (red nodes / build errors)
+            var channel = _messageChannelProp?.GetValue(_session);
+            if (channel is not null)
             {
-                var msgType = msg.GetType();
-                var text = msgType.GetProperty("Message")?.GetValue(msg)?.ToString()
-                        ?? msgType.GetProperty("Text")?.GetValue(msg)?.ToString()
-                        ?? msg.ToString();
-                var severity = msgType.GetProperty("Severity")?.GetValue(msg)?.ToString()
-                            ?? msgType.GetProperty("Kind")?.GetValue(msg)?.ToString()
-                            ?? "Error";
-                var location = msgType.GetProperty("Location")?.GetValue(msg)?.ToString()
-                            ?? msgType.GetProperty("FilePath")?.GetValue(msg)?.ToString();
-
-                errors.Add(new ErrorInfo
+                _messageChannelValueProp ??= channel.GetType().GetProperty("Value");
+                var messagesSet = _messageChannelValueProp?.GetValue(channel) as IEnumerable;
+                if (messagesSet is not null)
                 {
-                    Message = text ?? "",
-                    Severity = severity,
-                    Location = location
-                });
+                    foreach (var msg in messagesSet)
+                    {
+                        var err = ExtractMessage(msg, "Compile");
+                        if (err is not null) errors.Add(err);
+                    }
+                }
+            }
+
+            // Runtime messages (pink nodes / exceptions)
+            var runtime = _userRuntimeProp?.GetValue(_session);
+            if (runtime is not null)
+            {
+                _runtimeMessagesProp ??= runtime.GetType().GetProperty("RuntimeMessages");
+                var runtimeMsgs = _runtimeMessagesProp?.GetValue(runtime) as IEnumerable;
+                if (runtimeMsgs is not null)
+                {
+                    foreach (var msg in runtimeMsgs)
+                    {
+                        var err = ExtractMessage(msg, "Runtime");
+                        if (err is not null) errors.Add(err);
+                    }
+                }
             }
         }
-        catch { /* State collection should never crash */ }
+        catch { }
 
         Errors = errors;
     }
 
-    public void UpdateRunningState(AppHost appHost)
+    private static ErrorInfo? ExtractMessage(object msg, string source)
     {
         try
         {
-            var runtimeProp = appHost.GetType().GetProperty("Runtime",
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            if (runtimeProp is not null)
-            {
-                var runtime = runtimeProp.GetValue(appHost);
-                if (runtime is not null)
-                {
-                    var isPausedProp = runtime.GetType().GetProperty("IsPaused",
-                        BindingFlags.Public | BindingFlags.Instance);
-                    if (isPausedProp is not null)
-                        IsPaused = isPausedProp.GetValue(runtime) as bool? ?? false;
+            var msgType = msg.GetType();
+            var text = msgType.GetProperty("What")?.GetValue(msg)?.ToString()
+                    ?? msgType.GetProperty("Message")?.GetValue(msg)?.ToString()
+                    ?? msgType.GetProperty("Text")?.GetValue(msg)?.ToString()
+                    ?? msg.ToString();
+            var severity = msgType.GetProperty("Severity")?.GetValue(msg)?.ToString()
+                        ?? msgType.GetProperty("Kind")?.GetValue(msg)?.ToString()
+                        ?? "Error";
+            var location = msgType.GetProperty("Location")?.GetValue(msg)?.ToString()
+                        ?? msgType.GetProperty("Where")?.GetValue(msg)?.ToString();
 
-                    var isRunningProp = runtime.GetType().GetProperty("IsRunning",
-                        BindingFlags.Public | BindingFlags.Instance);
-                    if (isRunningProp is not null)
-                        IsRunning = isRunningProp.GetValue(runtime) as bool? ?? true;
+            return new ErrorInfo
+            {
+                Message = text ?? "",
+                Severity = severity,
+                Location = location,
+                Source = source
+            };
+        }
+        catch { return null; }
+    }
+
+    public void UpdateRunningState(AppHost appHost)
+    {
+        Initialize();
+        if (_failed || _session is null) return;
+
+        try
+        {
+            var runtime = _userRuntimeProp?.GetValue(_session);
+            if (runtime is not null)
+            {
+                _runtimeModeProp ??= runtime.GetType().GetProperty("Mode");
+                _runtimeFrameProp ??= runtime.GetType().GetProperty("Frame");
+
+                var mode = _runtimeModeProp?.GetValue(runtime)?.ToString();
+                IsRunning = mode == "Running";
+                IsPaused = mode == "Paused";
+
+                if (_runtimeFrameProp?.GetValue(runtime) is ulong frame)
+                {
+                    FrameCount = (long)frame;
                 }
             }
         }
-        catch { /* State collection should never crash */ }
+        catch { }
+    }
+
+    public void UpdatePackages()
+    {
+        Initialize();
+        if (_failed || _session is null) return;
+
+        // Only update packages occasionally (they don't change often)
+        if (Packages.Count > 0 && FrameCount % 300 != 0) return;
+
+        var packages = new List<PackageInfo>();
+        try
+        {
+            var nugets = _availableNugetsProp?.GetValue(_session) as IEnumerable;
+            if (nugets is null) return;
+
+            foreach (var pkg in nugets)
+            {
+                var pkgType = pkg.GetType();
+                var id = pkgType.GetProperty("Id")?.GetValue(pkg)?.ToString();
+                var version = pkgType.GetProperty("Version")?.GetValue(pkg)?.ToString();
+                var isVL = pkgType.GetProperty("IsVLPackage")?.GetValue(pkg) as bool? ?? false;
+                var isSource = pkgType.GetProperty("IsSourcePackage")?.GetValue(pkg) as bool? ?? false;
+                var isHDE = pkgType.GetProperty("IsHDEPackage")?.GetValue(pkg) as bool? ?? false;
+
+                if (id is not null && isVL)
+                {
+                    packages.Add(new PackageInfo
+                    {
+                        Name = id,
+                        Version = version,
+                        Source = isSource ? "source" : "binary",
+                        IsExtension = isHDE
+                    });
+                }
+            }
+        }
+        catch { }
+
+        Packages = packages;
     }
 }
 
@@ -209,45 +256,37 @@ internal class BridgeState
 /// <summary>Info about an open document in vvvv.</summary>
 public class DocumentInfo
 {
-    /// <summary>Document display name.</summary>
     public string Name { get; set; } = "";
-    /// <summary>Absolute path to the .vl file.</summary>
     public string FilePath { get; set; } = "";
-    /// <summary>Whether this is the currently active/focused document.</summary>
     public bool IsActive { get; set; }
+    public bool IsSaved { get; set; } = true;
+    public bool IsChanged { get; set; }
+    public bool IsReadOnly { get; set; }
 }
 
-/// <summary>A compilation error or warning.</summary>
+/// <summary>A compilation or runtime error/warning.</summary>
 public class ErrorInfo
 {
-    /// <summary>Error/warning text.</summary>
     public string Message { get; set; } = "";
-    /// <summary>Severity level (Error, Warning, Info).</summary>
     public string? Severity { get; set; }
-    /// <summary>Source location (file path, node, etc.).</summary>
     public string? Location { get; set; }
+    public string? Source { get; set; }
 }
 
-/// <summary>A referenced NuGet package.</summary>
+/// <summary>An installed VL package.</summary>
 public class PackageInfo
 {
-    /// <summary>Package name.</summary>
     public string Name { get; set; } = "";
-    /// <summary>Package version.</summary>
     public string? Version { get; set; }
-    /// <summary>Source (nuget, local, etc.).</summary>
     public string? Source { get; set; }
+    public bool IsExtension { get; set; }
 }
 
 /// <summary>A public channel exposed in the running patch.</summary>
 public class ChannelInfo
 {
-    /// <summary>Channel name/path.</summary>
     public string Name { get; set; } = "";
-    /// <summary>Value type.</summary>
     public string? Type { get; set; }
-    /// <summary>Current value as string.</summary>
     public string? Value { get; set; }
-    /// <summary>Direction (In, Out, InOut).</summary>
     public string? Direction { get; set; }
 }

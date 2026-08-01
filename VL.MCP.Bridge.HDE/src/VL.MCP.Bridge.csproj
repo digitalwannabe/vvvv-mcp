@@ -5,22 +5,17 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
-    <RootNamespace>VL.MCP.Bridge</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- VL.Core gives us [ProcessNode], NodeContext, AppHost, etc. -->
-    <PackageReference Include="VL.Core" Version="2025.7.1-*" />
-  </ItemGroup>
-
-  <!-- ASP.NET Core is already loaded in the vvvv process; we reference the shared framework -->
-  <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="VL.Core" Version="2025.7.1-0156-gdf75a792b5" />
   </ItemGroup>
 
   <ItemGroup>
     <Using Include="VL.Core" />
     <Using Include="VL.Core.Import" />
+    <Using Include="VL.Lib.Collections" />
+    <Using Include="Stride.Core.Mathematics" />
   </ItemGroup>
 
 </Project>

@@ -155,7 +155,7 @@ npx @modelcontextprotocol/inspector -- dotnet src/VvvvMcp/bin/Debug/net8.0/VvvvM
 # 2. Commit, tag, push — GitHub Actions publishes to NuGet.org automatically
 git add -A && git commit -m "release 0.6.0"
 git tag v0.6.0
-git push --tags
+git push origin main --tags
 ```
 
 ---

@@ -1,28 +1,25 @@
 using System.Net;
+using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Hosting;
 using VL.Core;
+using VL.Core.Import;
 
 namespace VL.MCP.Bridge;
 
 /// <summary>
 /// Process node that runs an HTTP bridge server inside vvvv.
-/// Place this in a .HDE.vl extension to auto-start with the editor.
-/// 
-/// The server exposes JSON endpoints that the vvvv-mcp server can call
-/// to get live information about the running vvvv instance.
+/// Uses System.Net.HttpListener (no ASP.NET Core dependency).
 /// </summary>
 [ProcessNode]
-public class MCPBridgeServer : IDisposable
+public class MCPBridgeServer
 {
-    private WebApplication? _app;
+    private HttpListener? _listener;
     private Task? _serverTask;
     private CancellationTokenSource? _cts;
     private int _currentPort;
+    private NodeContext? _nodeContext;
     private readonly BridgeState _state = new();
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -32,188 +29,304 @@ public class MCPBridgeServer : IDisposable
     };
 
     /// <summary>
-    /// The port the bridge server listens on.
-    /// </summary>
-    public int Port { get; private set; } = 7123;
-
-    /// <summary>
-    /// Whether the server is currently running.
-    /// </summary>
-    public bool IsRunning => _app is not null && _serverTask is not null && !_serverTask.IsCompleted;
-
-    /// <summary>
-    /// Last error message if the server failed to start.
-    /// </summary>
-    public string? LastError { get; private set; }
-
-    /// <summary>
     /// Update is called every frame by vvvv.
     /// </summary>
-    public void Update(
+    public (int Port, bool IsRunning, string? LastError) Update(
         NodeContext nodeContext,
         int port = 7123,
         bool enabled = true)
     {
+        _nodeContext = nodeContext;
+        string? lastError = null;
+
         if (!enabled)
         {
             Stop();
-            return;
+            return (port, false, null);
         }
 
         // Restart if port changed
-        if (port != _currentPort && _app is not null)
+        if (port != _currentPort && _listener is not null)
         {
             Stop();
         }
 
-        if (_app is null && enabled)
+        if (_listener is null && enabled)
         {
             _currentPort = port;
-            Port = port;
-            Start(nodeContext);
+            lastError = Start();
         }
 
         // Update state from vvvv session each frame
-        UpdateState(nodeContext);
-    }
-
-    private void Start(NodeContext nodeContext)
-    {
-        try
-        {
-            _cts = new CancellationTokenSource();
-
-            var builder = WebApplication.CreateSlimBuilder();
-            builder.WebHost.ConfigureKestrel(opts =>
-            {
-                opts.Listen(IPAddress.Loopback, _currentPort);
-            });
-
-            _app = builder.Build();
-            MapEndpoints(_app, nodeContext);
-
-            _serverTask = _app.RunAsync(_cts.Token);
-            LastError = null;
-        }
-        catch (Exception ex)
-        {
-            LastError = ex.Message;
-            _app = null;
-            _serverTask = null;
-        }
-    }
-
-    private void Stop()
-    {
-        if (_cts is not null)
-        {
-            _cts.Cancel();
-            _cts.Dispose();
-            _cts = null;
-        }
-        if (_app is not null)
-        {
-            try { _app.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2)); }
-            catch { /* best effort */ }
-            _app = null;
-        }
-        _serverTask = null;
-    }
-
-    private void MapEndpoints(WebApplication app, NodeContext nodeContext)
-    {
-        // Health check / discovery
-        app.MapGet("/api/ping", () => Results.Json(new
-        {
-            status = "ok",
-            server = "VL.MCP.Bridge",
-            version = "0.1.0",
-            timestamp = DateTimeOffset.UtcNow
-        }, JsonOpts));
-
-        // List open documents
-        app.MapGet("/api/documents", () =>
-            Results.Json(_state.Documents, JsonOpts));
-
-        // Get compilation errors and warnings
-        app.MapGet("/api/errors", () =>
-            Results.Json(_state.Errors, JsonOpts));
-
-        // Get running state (is the patch running, paused, etc.)
-        app.MapGet("/api/state", () => Results.Json(new
-        {
-            isRunning = _state.IsRunning,
-            isPaused = _state.IsPaused,
-            frameCount = _state.FrameCount,
-            uptimeSeconds = _state.UptimeSeconds
-        }, JsonOpts));
-
-        // Request vvvv to reload a specific file (trigger hot-reload)
-        app.MapPost("/api/reload", async (HttpContext ctx) =>
-        {
-            var body = await JsonSerializer.DeserializeAsync<ReloadRequest>(
-                ctx.Request.Body, JsonOpts);
-            if (body?.FilePath is null)
-                return Results.BadRequest(new { error = "filePath required" });
-
-            var result = ReloadFile(nodeContext, body.FilePath);
-            return Results.Json(result, JsonOpts);
-        });
-
-        // Get info about installed/referenced packages
-        app.MapGet("/api/packages", () =>
-            Results.Json(_state.Packages, JsonOpts));
-
-        // Get public channels (if any are exposed)
-        app.MapGet("/api/channels", () =>
-            Results.Json(_state.Channels, JsonOpts));
-    }
-
-    /// <summary>
-    /// Update internal state snapshot from the vvvv session.
-    /// Called once per frame.
-    /// </summary>
-    private void UpdateState(NodeContext nodeContext)
-    {
         try
         {
             _state.FrameCount++;
             _state.UptimeSeconds = (float)(DateTime.UtcNow - _state.StartTime).TotalSeconds;
-
-            // Access the vvvv session via NodeContext.AppHost
             var appHost = nodeContext.AppHost;
-
-            // --- Documents ---
             _state.UpdateDocuments(appHost);
-
-            // --- Errors ---
             _state.UpdateErrors(appHost);
-
-            // --- Running state ---
             _state.UpdateRunningState(appHost);
+            _state.UpdatePackages();
         }
-        catch
-        {
-            // Silently ignore - we don't want bridge state collection to crash the editor
-        }
+        catch { }
+
+        var isRunning = _listener is not null && _listener.IsListening;
+        return (port, isRunning, lastError);
     }
 
-    private static object ReloadFile(NodeContext nodeContext, string filePath)
+    private string? Start()
     {
         try
         {
-            // Signal vvvv to re-read the file from disk
-            // vvvv normally hot-reloads on file save, but we can force it
-            var appHost = nodeContext.AppHost;
+            _cts = new CancellationTokenSource();
+            _listener = new HttpListener();
+            _listener.Prefixes.Add($"http://127.0.0.1:{_currentPort}/");
+            _listener.Start();
 
-            // The simplest approach: touch the file's last-write timestamp
-            // which triggers vvvv's file watcher
-            if (File.Exists(filePath))
+            _serverTask = Task.Run(() => RequestLoop(_cts.Token), _cts.Token);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _listener?.Close();
+            _listener = null;
+            _serverTask = null;
+            return ex.Message;
+        }
+    }
+
+    private async Task RequestLoop(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested && _listener is not null && _listener.IsListening)
+        {
+            try
             {
-                File.SetLastWriteTimeUtc(filePath, DateTime.UtcNow);
-                return new { success = true, filePath };
+                var context = await _listener.GetContextAsync().WaitAsync(ct);
+                _ = Task.Run(() => HandleRequest(context), ct);
             }
-            return new { success = false, error = "File not found: " + filePath };
+            catch (OperationCanceledException) { break; }
+            catch (HttpListenerException) { break; }
+            catch { }
+        }
+    }
+
+    private void HandleRequest(HttpListenerContext context)
+    {
+        var request = context.Request;
+        var response = context.Response;
+
+        try
+        {
+            var path = request.Url?.AbsolutePath ?? "/";
+            var method = request.HttpMethod;
+
+            object? result = (method, path) switch
+            {
+                ("GET", "/api/ping") => new
+                {
+                    status = "ok",
+                    server = "VL.MCP.Bridge",
+                    version = "0.1.0",
+                    timestamp = DateTimeOffset.UtcNow
+                },
+                ("GET", "/api/documents") => _state.Documents,
+                ("GET", "/api/errors") => _state.Errors,
+                ("GET", "/api/state") => new
+                {
+                    isRunning = _state.IsRunning,
+                    isPaused = _state.IsPaused,
+                    frameCount = _state.FrameCount,
+                    uptimeSeconds = _state.UptimeSeconds
+                },
+                ("POST", "/api/reload") => HandleReload(request),
+                ("GET", "/api/packages") => _state.Packages,
+                ("GET", "/api/channels") => _state.Channels,
+                ("GET", "/api/debug") => HandleDebug(),
+                ("GET", "/api/debug/explore") => HandleExplore(request),
+                _ => null
+            };
+
+            if (result is null)
+            {
+                response.StatusCode = 404;
+                WriteJson(response, new { error = "Not found", path });
+            }
+            else
+            {
+                response.StatusCode = 200;
+                WriteJson(response, result);
+            }
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                response.StatusCode = 500;
+                WriteJson(response, new { error = ex.Message });
+            }
+            catch { }
+        }
+        finally
+        {
+            try { response.Close(); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// Debug endpoint: reflect over AppHost and VL.Lang to discover the API shape.
+    /// </summary>
+    private object HandleDebug()
+    {
+        var info = new Dictionary<string, object?>();
+
+        try
+        {
+            var appHost = _nodeContext?.AppHost;
+            if (appHost is null)
+            {
+                info["error"] = "NodeContext or AppHost is null";
+                return info;
+            }
+
+            // AppHost type info
+            info["appHostType"] = appHost.GetType().FullName;
+
+            // Check for Global/Parent/Editor AppHost
+            var globalProp = typeof(AppHost).GetProperty("Global", BindingFlags.Public | BindingFlags.Static);
+            var globalHost = globalProp?.GetValue(null);
+            info["globalAppHost"] = globalHost?.GetType().FullName;
+            info["globalAppHostIsThis"] = ReferenceEquals(globalHost, appHost);
+
+            // Check RuntimeInstance for parent/session access
+            var runtimeType = appHost.GetType();
+            var allProps = runtimeType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            info["runtimeInstanceAllProps"] = allProps
+                .Select(p => $"{p.Name} : {p.PropertyType.Name} [{(p.CanRead ? "get" : "")}{(p.CanWrite ? " set" : "")}]")
+                .ToArray();
+
+            // Try to find Session on the global AppHost
+            var targetHost = globalHost ?? appHost;
+            var targetServices = targetHost?.GetType().GetProperty("Services")?.GetValue(targetHost);
+
+            // Find VL.Lang assembly
+            var vlLangAsm = AppDomain.CurrentDomain.GetAssemblies()
+                .FirstOrDefault(a => a.GetName().Name == "VL.Lang");
+            info["vlLangLoaded"] = vlLangAsm is not null;
+
+            if (vlLangAsm is not null)
+            {
+                var sessionType = vlLangAsm.GetType("VL.Model.VLSession");
+                info["sessionTypeFound"] = sessionType?.FullName;
+
+                // Try getting session from global host services
+                if (sessionType is not null && targetServices is not null)
+                {
+                    var getServiceMethod = targetServices.GetType().GetMethod("GetService",
+                        new[] { typeof(Type) });
+                    var session = getServiceMethod?.Invoke(targetServices, new object[] { sessionType });
+                    info["sessionFromGlobal"] = session is not null;
+
+                    if (session is not null)
+                    {
+                        info["sessionActualType"] = session.GetType().FullName;
+                        info["sessionProperties"] = session.GetType()
+                            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                            .Select(p => $"{p.Name} : {p.PropertyType.Name}")
+                            .Take(40)
+                            .ToArray();
+                    }
+                }
+
+                // Also try: static VLSession.Instance
+                if (sessionType is not null)
+                {
+                    var instanceProp = sessionType.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static);
+                    var sessionInstance = instanceProp?.GetValue(null);
+                    info["sessionInstance"] = sessionInstance is not null;
+
+                    if (sessionInstance is not null)
+                    {
+                        info["sessionInstanceType"] = sessionInstance.GetType().FullName;
+                        info["sessionInstanceProperties"] = sessionInstance.GetType()
+                            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                            .Select(p => $"{p.Name} : {p.PropertyType.Name}")
+                            .Take(40)
+                            .ToArray();
+
+                        // Try CurrentSolution
+                        var solProp = sessionInstance.GetType().GetProperty("CurrentSolution",
+                            BindingFlags.Public | BindingFlags.Instance);
+                        info["hasCurrSolution"] = solProp is not null;
+
+                        if (solProp is not null)
+                        {
+                            var solution = solProp.GetValue(sessionInstance);
+                            info["solutionType"] = solution?.GetType().FullName;
+                            if (solution is not null)
+                            {
+                                info["solutionProperties"] = solution.GetType()
+                                    .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                                    .Select(p => $"{p.Name} : {p.PropertyType.Name}")
+                                    .Take(40)
+                                    .ToArray();
+                            }
+                        }
+                    }
+                }
+
+                // Check RuntimeInstance-specific properties
+                var sessionPropOnRuntime = runtimeType.GetProperty("Session",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (sessionPropOnRuntime is not null)
+                {
+                    var sess = sessionPropOnRuntime.GetValue(appHost);
+                    info["sessionFromRuntime"] = sess is not null;
+                    info["sessionFromRuntimeType"] = sess?.GetType().FullName;
+                }
+
+                // Try Platform property on RuntimeInstance
+                var platformProp = runtimeType.GetProperty("Platform",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (platformProp is not null)
+                {
+                    var platform = platformProp.GetValue(appHost);
+                    info["platformType"] = platform?.GetType().FullName;
+                    if (platform is not null)
+                    {
+                        info["platformProperties"] = platform.GetType()
+                            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                            .Select(p => $"{p.Name} : {p.PropertyType.Name}")
+                            .Take(20)
+                            .ToArray();
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            info["exception"] = ex.ToString();
+        }
+
+        return info;
+    }
+
+    private object HandleReload(HttpListenerRequest request)
+    {
+        try
+        {
+            using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+            var body = reader.ReadToEnd();
+            var parsed = JsonSerializer.Deserialize<ReloadRequest>(body, JsonOpts);
+
+            if (parsed?.FilePath is null)
+                return new { success = false, error = "filePath required" };
+
+            if (File.Exists(parsed.FilePath))
+            {
+                File.SetLastWriteTimeUtc(parsed.FilePath, DateTime.UtcNow);
+                return new { success = true, filePath = parsed.FilePath };
+            }
+            return new { success = false, error = "File not found: " + parsed.FilePath };
         }
         catch (Exception ex)
         {
@@ -221,11 +334,147 @@ public class MCPBridgeServer : IDisposable
         }
     }
 
-    /// <inheritdoc/>
-    public void Dispose()
+    /// <summary>
+    /// Generic explorer: navigate VLSession properties by dot-path.
+    /// Usage: /api/debug/explore?path=LatestCompilation.Messages
+    /// </summary>
+    private object HandleExplore(HttpListenerRequest request)
     {
-        Stop();
-        GC.SuppressFinalize(this);
+        var info = new Dictionary<string, object?>();
+        try
+        {
+            var queryPath = request.QueryString["path"] ?? "";
+            info["path"] = queryPath;
+
+            // Start from VLSession.Instance
+            var vlLangAsm = AppDomain.CurrentDomain.GetAssemblies()
+                .FirstOrDefault(a => a.GetName().Name == "VL.Lang");
+            if (vlLangAsm is null) return new { error = "VL.Lang not loaded" };
+
+            var sessionType = vlLangAsm.GetType("VL.Model.VLSession");
+            if (sessionType is null) return new { error = "VLSession type not found" };
+
+            var instanceProp = sessionType.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static);
+            var current = instanceProp?.GetValue(null);
+            if (current is null) return new { error = "VLSession.Instance is null" };
+
+            info["rootType"] = current.GetType().FullName;
+
+            // Navigate the dot-path
+            if (!string.IsNullOrEmpty(queryPath))
+            {
+                var parts = queryPath.Split('.');
+                foreach (var part in parts)
+                {
+                    if (current is null) break;
+
+                    var prop = current.GetType().GetProperty(part,
+                        BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+                    if (prop is null)
+                    {
+                        info["error"] = $"Property '{part}' not found on {current.GetType().Name}";
+                        info["availableProperties"] = current.GetType()
+                            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                            .Select(p => $"{p.Name} : {p.PropertyType.Name}")
+                            .Take(50)
+                            .ToArray();
+                        return info;
+                    }
+
+                    current = prop.GetValue(current);
+                    info["resolvedType"] = current?.GetType().FullName;
+                }
+            }
+
+            if (current is null)
+            {
+                info["value"] = null;
+                return info;
+            }
+
+            // Dump properties of the resolved object
+            info["type"] = current.GetType().FullName;
+            info["properties"] = current.GetType()
+                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Select(p => $"{p.Name} : {p.PropertyType.FullName}")
+                .Take(60)
+                .ToArray();
+
+            // If it's enumerable, try to list items
+            if (current is System.Collections.IEnumerable enumerable && current is not string)
+            {
+                var items = new List<object?>();
+                int count = 0;
+                foreach (var item in enumerable)
+                {
+                    if (count >= 10) { items.Add("...(truncated)"); break; }
+                    // Get basic info about each item
+                    var itemType = item?.GetType();
+                    var nameP = itemType?.GetProperty("Name")?.GetValue(item)?.ToString();
+                    var pathP = itemType?.GetProperty("FilePath")?.GetValue(item)?.ToString()
+                             ?? itemType?.GetProperty("Path")?.GetValue(item)?.ToString();
+                    var msgP = itemType?.GetProperty("Message")?.GetValue(item)?.ToString()
+                             ?? itemType?.GetProperty("Text")?.GetValue(item)?.ToString();
+
+                    if (nameP is not null || pathP is not null || msgP is not null)
+                    {
+                        items.Add(new { type = itemType?.Name, name = nameP, path = pathP, message = msgP });
+                    }
+                    else
+                    {
+                        items.Add(new { type = itemType?.Name, value = item?.ToString() });
+                    }
+                    count++;
+                }
+                info["items"] = items;
+                info["itemCount"] = count;
+
+                // Get type of first item for schema discovery
+                foreach (var item in enumerable)
+                {
+                    if (item is not null)
+                    {
+                        info["itemType"] = item.GetType().FullName;
+                        info["itemProperties"] = item.GetType()
+                            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                            .Select(p => $"{p.Name} : {p.PropertyType.Name}")
+                            .Take(40)
+                            .ToArray();
+                    }
+                    break;
+                }
+            }
+            else
+            {
+                // Try to get a string representation
+                info["valueStr"] = current.ToString();
+            }
+        }
+        catch (Exception ex)
+        {
+            info["exception"] = ex.Message;
+        }
+        return info;
+    }
+
+    private static void WriteJson(HttpListenerResponse response, object data)
+    {
+        response.ContentType = "application/json";
+        response.AddHeader("Access-Control-Allow-Origin", "*");
+        var json = JsonSerializer.SerializeToUtf8Bytes(data, JsonOpts);
+        response.ContentLength64 = json.Length;
+        response.OutputStream.Write(json, 0, json.Length);
+    }
+
+    private void Stop()
+    {
+        _cts?.Cancel();
+        try { _listener?.Stop(); } catch { }
+        try { _listener?.Close(); } catch { }
+        _listener = null;
+        _cts?.Dispose();
+        _cts = null;
+        _serverTask = null;
     }
 }
 

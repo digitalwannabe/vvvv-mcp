@@ -29,3 +29,4 @@ knowledge/templates/sdsl/EditShaders/bin/
 
 # Old location (can be removed after cleanup)
 /src/VL.MCP.Bridge/
+nupkg/
