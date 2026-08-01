@@ -5,31 +5,40 @@ using VvvvPluginAnalyzer.Models;
 
 namespace VvvvPluginAnalyzer.Analyzers
 {
+    /// <summary>
+    /// Converts <see cref="VLNodeDefinition"/> objects into the simplified
+    /// <see cref="UsableNode"/> format consumed by the MCP catalog.
+    ///
+    /// Getter/Setter synthesis:
+    ///   In vvvv, every Slot (field/property) of a Record or Class automatically generates
+    ///   two synthesized nodes at runtime — a getter and a setter. These nodes do NOT
+    ///   appear as explicit method definitions in the .vl XML; vvvv creates them from the
+    ///   Slot metadata alone.  Therefore we synthesize them here from Slots directly,
+    ///   without looking for SetXxx or Xxx method names.
+    ///
+    /// For Records (immutable):
+    ///   - Getter: [RecordInstance] → [PropertyValue]
+    ///   - Setter: [RecordInstance, NewValue] → [NewRecordInstance]  (returns new instance)
+    ///
+    /// For Classes (mutable):
+    ///   - Getter: [ClassInstance] → [PropertyValue]
+    ///   - Setter: [ClassInstance, NewValue] → [ClassInstance]  (same instance, modified)
+    /// </summary>
     public class UsableNodeExtractor
     {
         public UsableNodesCollection ExtractUsableNodes(VLDocument document, string libraryName)
         {
             var collection = new UsableNodesCollection
             {
-                LibraryName = libraryName,
+                LibraryName    = libraryName,
                 ExtractionDate = DateTime.Now
             };
 
-            var allNodes = new List<UsableNode>();
+            var allNodes = ExtractNodesFromDocument(document);
 
-
-                var documentNodes = ExtractNodesFromDocument(document);
-                allNodes.AddRange(documentNodes);
-            
-
-            // Sort nodes by category and name
             collection.Nodes = allNodes.OrderBy(n => n.Category).ThenBy(n => n.Name).ToList();
-            
-            // Calculate summary statistics
-            collection.TotalNodes = collection.Nodes.Count;
-            collection.Categories = collection.Nodes.Select(n => n.Category).Distinct().OrderBy(c => c).ToList();
-            
-            // Group by node type
+            collection.TotalNodes  = collection.Nodes.Count;
+            collection.Categories  = collection.Nodes.Select(n => n.Category).Distinct().OrderBy(c => c).ToList();
             collection.NodesByType = collection.Nodes
                 .GroupBy(n => n.Type.ToString())
                 .ToDictionary(g => g.Key, g => g.Count());
@@ -40,200 +49,162 @@ namespace VvvvPluginAnalyzer.Analyzers
         private List<UsableNode> ExtractNodesFromDocument(VLDocument document)
         {
             var nodes = new List<UsableNode>();
-
             foreach (var nodeDef in document.NodeDefinitions)
             {
-                // Skip Application nodes and other non-library nodes
                 if (nodeDef.Name == "Application" || string.IsNullOrEmpty(nodeDef.Category))
                     continue;
-
-                var usableNodes = ConvertNodeDefinitionToUsableNodes(nodeDef, document);
-                nodes.AddRange(usableNodes);
+                nodes.AddRange(ConvertNodeDefinitionToUsableNodes(nodeDef, document));
             }
-
             return nodes;
         }
 
         private List<UsableNode> ConvertNodeDefinitionToUsableNodes(VLNodeDefinition nodeDef, VLDocument document)
         {
-            var nodes = new List<UsableNode>();
-
-            switch (nodeDef.Type)
+            return nodeDef.Type switch
             {
-                case VLNodeType.Record:
-                case VLNodeType.Class:
-                    nodes.AddRange(ExtractFromRecordOrClass(nodeDef, document));
-                    break;
-
-                case VLNodeType.Process:
-                    nodes.Add(ExtractFromProcess(nodeDef, document));
-                    break;
-
-                case VLNodeType.Operation:
-                    nodes.Add(ExtractFromOperation(nodeDef, document));
-                    break;
-            }
-
-            return nodes;
+                VLNodeType.Record or VLNodeType.Class => ExtractFromRecordOrClass(nodeDef, document),
+                VLNodeType.Process   => [ExtractFromProcess(nodeDef, document)],
+                VLNodeType.Operation => [ExtractFromOperation(nodeDef, document)],
+                // Interface and Forward definitions are infrastructure, not user-facing nodes.
+                // Unknown is emitted as-is for completeness.
+                VLNodeType.Unknown   => [ExtractFromOperation(nodeDef, document)],
+                _                    => []
+            };
         }
+
+        // ─── Record / Class ────────────────────────────────────────────────────
 
         private List<UsableNode> ExtractFromRecordOrClass(VLNodeDefinition nodeDef, VLDocument document)
         {
-            var nodes = new List<UsableNode>();
+            var nodes     = new List<UsableNode>();
+            var baseType  = nodeDef.Type == VLNodeType.Record ? UsableNodeType.Record : UsableNodeType.Class;
+            var typeName  = nodeDef.Name;
+            var category  = nodeDef.Category;
+            var fullBase  = BuildFullName(category, typeName, nodeDef.Version);
 
-            // 1. Constructor node (Create operation)
-            var createMethod = nodeDef.Methods.FirstOrDefault(m => m.Name == "Create");
-            if (createMethod != null)
+            // ── 1. Constructor node ("Create") ─────────────────────────────────
+            // Inputs = all slots, Output = type instance.
+            var constructorNode = MakeNode(nodeDef, typeName, baseType, document, fullBase);
+            foreach (var slot in nodeDef.Slots)
             {
-                var constructorNode = new UsableNode
+                constructorNode.Inputs.Add(new UsablePin
                 {
-                    Name = nodeDef.Name,
-                    FullName = $"{nodeDef.Category}.{nodeDef.Name}",
-                    Category = nodeDef.Category,
-                    Type = nodeDef.Type == VLNodeType.Record ? UsableNodeType.Record : UsableNodeType.Class,
-                    Summary = nodeDef.Summary,
-                    Remarks = nodeDef.Remarks,
-                    Tags = nodeDef.Tags,
-                    IsGeneric = nodeDef.IsGeneric,
-                    HasState = nodeDef.HasStateOut,
-                    Source = document.FileName
-                };
-
-                // Constructor inputs from slots
-                foreach (var slot in nodeDef.Slots)
-                {
-                    constructorNode.Inputs.Add(new UsablePin
-                    {
-                        Name = slot.Name,
-                        Type = slot.TypeInfo?.TypeName ?? "Object",
-                        Summary = slot.Summary,
-                        IsOptional = false
-                    });
-                }
-
-                // Constructor output is the instance
-                constructorNode.Outputs.Add(new UsablePin
-                {
-                    Name = "Output",
-                    Type = nodeDef.Name,
-                    Summary = $"Instance of {nodeDef.Name}"
+                    Name         = slot.Name,
+                    Type         = SlotTypeName(slot),
+                    Summary      = slot.Summary,
+                    DefaultValue = slot.DefaultValue,
+                    IsOptional   = !string.IsNullOrEmpty(slot.DefaultValue)
                 });
-
-                nodes.Add(constructorNode);
             }
+            constructorNode.Outputs.Add(new UsablePin
+            {
+                Name    = "Output",
+                Type    = typeName,
+                Summary = $"Instance of {typeName}"
+            });
+            nodes.Add(constructorNode);
 
-            // 2. Property setter nodes
+            // ── 2. Synthesized getter nodes (one per Slot) ─────────────────────
+            // Every public slot becomes a getter: [TypeInstance] → [PropertyValue]
             foreach (var slot in nodeDef.Slots)
             {
-                var setterMethod = nodeDef.Methods.FirstOrDefault(m => m.Name == $"Set{slot.Name}");
-                if (setterMethod != null)
+                if (string.IsNullOrEmpty(slot.Name)) continue;
+
+                var getter = new UsableNode
                 {
-                    var setterNode = new UsableNode
-                    {
-                        Name = $"Set{slot.Name}",
-                        FullName = $"{nodeDef.Category}.{nodeDef.Name}.Set{slot.Name}",
-                        Category = nodeDef.Category,
-                        Type = UsableNodeType.Setter,
-                        Summary = $"Sets the {slot.Name} property",
-                        IsGeneric = nodeDef.IsGeneric,
-                        Source = document.FileName
-                    };
-
-                    // Instance input
-                    setterNode.Inputs.Add(new UsablePin
-                    {
-                        Name = "Input",
-                        Type = nodeDef.Name,
-                        Summary = $"Instance of {nodeDef.Name}"
-                    });
-
-                    // Value input
-                    setterNode.Inputs.Add(new UsablePin
-                    {
-                        Name = slot.Name,
-                        Type = slot.TypeInfo?.TypeName ?? "Object",
-                        Summary = slot.Summary
-                    });
-
-                    // Output is the modified instance
-                    setterNode.Outputs.Add(new UsablePin
-                    {
-                        Name = "Output",
-                        Type = nodeDef.Name,
-                        Summary = $"Modified instance of {nodeDef.Name}"
-                    });
-
-                    nodes.Add(setterNode);
-                }
-            }
-
-            // 3. Property getter nodes
-            foreach (var slot in nodeDef.Slots)
-            {
-                var getterMethod = nodeDef.Methods.FirstOrDefault(m => m.Name == slot.Name);
-                if (getterMethod != null)
-                {
-                    var getterNode = new UsableNode
-                    {
-                        Name = slot.Name,
-                        FullName = $"{nodeDef.Category}.{nodeDef.Name}.{slot.Name}",
-                        Category = nodeDef.Category,
-                        Type = UsableNodeType.Getter,
-                        Summary = $"Gets the {slot.Name} property",
-                        IsGeneric = nodeDef.IsGeneric,
-                        Source = document.FileName
-                    };
-
-                    // Instance input
-                    getterNode.Inputs.Add(new UsablePin
-                    {
-                        Name = "Input",
-                        Type = nodeDef.Name,
-                        Summary = $"Instance of {nodeDef.Name}"
-                    });
-
-                    // Property output
-                    getterNode.Outputs.Add(new UsablePin
-                    {
-                        Name = slot.Name,
-                        Type = slot.TypeInfo?.TypeName ?? "Object",
-                        Summary = slot.Summary
-                    });
-
-                    nodes.Add(getterNode);
-                }
-            }
-
-            // 4. Additional methods (if any)
-            var additionalMethods = nodeDef.Methods.Where(m => 
-                m.Name != "Create" && 
-                !nodeDef.Slots.Any(s => m.Name == s.Name || m.Name == $"Set{s.Name}"));
-
-            foreach (var method in additionalMethods)
-            {
-                var methodNode = new UsableNode
-                {
-                    Name = method.Name,
-                    FullName = $"{nodeDef.Category}.{nodeDef.Name}.{method.Name}",
-                    Category = nodeDef.Category,
-                    Type = UsableNodeType.Method,
-                    Summary = method.Summary,
-                    Remarks = method.Remarks,
-                    Tags = method.Tags,
+                    Name     = slot.Name,
+                    Version  = nodeDef.Version,
+                    Category = category,
+                    FullName = BuildFullName(category, slot.Name, ""),
+                    Type     = UsableNodeType.Getter,
+                    Summary  = $"Gets {slot.Name} from {typeName}",
                     IsGeneric = nodeDef.IsGeneric,
-                    Source = document.FileName
+                    HasState  = false,
+                    Source    = document.FileName
                 };
-
-                // Convert method pins
-                foreach (var pin in method.InputPins)
+                getter.Inputs.Add(new UsablePin
                 {
-                    methodNode.Inputs.Add(ConvertVLPinToUsablePin(pin));
-                }
-
-                foreach (var pin in method.OutputPins)
+                    Name    = typeName,
+                    Type    = typeName,
+                    Summary = $"Input {typeName}"
+                });
+                getter.Outputs.Add(new UsablePin
                 {
-                    methodNode.Outputs.Add(ConvertVLPinToUsablePin(pin));
-                }
+                    Name    = slot.Name,
+                    Type    = SlotTypeName(slot),
+                    Summary = slot.Summary
+                });
+                nodes.Add(getter);
+            }
+
+            // ── 3. Synthesized setter nodes (one per Slot) ─────────────────────
+            // Every public slot becomes a setter: [TypeInstance, NewValue] → [TypeInstance]
+            // For Records (immutable): the output is a new instance with the field replaced.
+            // For Classes (mutable):  the same instance is returned after modification.
+            foreach (var slot in nodeDef.Slots)
+            {
+                if (string.IsNullOrEmpty(slot.Name)) continue;
+
+                var setter = new UsableNode
+                {
+                    Name     = $"Set {slot.Name}",
+                    Version  = nodeDef.Version,
+                    Category = category,
+                    FullName = BuildFullName(category, $"Set {slot.Name}", ""),
+                    Type     = UsableNodeType.Setter,
+                    Summary  = nodeDef.Type == VLNodeType.Record
+                                   ? $"Returns a new {typeName} with {slot.Name} replaced"
+                                   : $"Sets {slot.Name} on the {typeName} instance",
+                    IsGeneric = nodeDef.IsGeneric,
+                    HasState  = false,
+                    Source    = document.FileName
+                };
+                setter.Inputs.Add(new UsablePin
+                {
+                    Name    = typeName,
+                    Type    = typeName,
+                    Summary = $"Input {typeName}"
+                });
+                setter.Inputs.Add(new UsablePin
+                {
+                    Name         = slot.Name,
+                    Type         = SlotTypeName(slot),
+                    Summary      = slot.Summary,
+                    DefaultValue = slot.DefaultValue,
+                    IsOptional   = !string.IsNullOrEmpty(slot.DefaultValue)
+                });
+                setter.Outputs.Add(new UsablePin
+                {
+                    Name    = "Output",
+                    Type    = typeName,
+                    Summary = nodeDef.Type == VLNodeType.Record
+                                  ? $"New {typeName} with {slot.Name} set"
+                                  : $"Modified {typeName}"
+                });
+                nodes.Add(setter);
+            }
+
+            // ── 4. Explicit operation methods (Update, Dispose, custom) ────────
+            // Skip Create (already the constructor), and any slot accessor names
+            // that might have been manually defined (unusual but possible).
+            var slotNames = new HashSet<string>(nodeDef.Slots.Select(s => s.Name), StringComparer.Ordinal);
+            foreach (var method in nodeDef.Methods)
+            {
+                if (method.Name == "Create") continue;
+                if (slotNames.Contains(method.Name)) continue;
+                if (method.Name.StartsWith("Set ") &&
+                    slotNames.Contains(method.Name[4..])) continue;
+
+                var methodNode = MakeNode(nodeDef, method.Name, UsableNodeType.Method, document,
+                    BuildFullName(category, $"{typeName}.{method.Name}", ""));
+                methodNode.Summary  = method.Summary;
+                methodNode.Remarks  = method.Remarks;
+                methodNode.Tags     = method.Tags;
+
+                foreach (var pin in method.InputPins.Where(p => !p.IsHidden))
+                    methodNode.Inputs.Add(ConvertPin(pin));
+                foreach (var pin in method.OutputPins.Where(p => !p.IsHidden))
+                    methodNode.Outputs.Add(ConvertPin(pin));
 
                 nodes.Add(methodNode);
             }
@@ -241,102 +212,111 @@ namespace VvvvPluginAnalyzer.Analyzers
             return nodes;
         }
 
+        // ─── Process ───────────────────────────────────────────────────────────
+
         private UsableNode ExtractFromProcess(VLNodeDefinition nodeDef, VLDocument document)
         {
-            var processNode = new UsableNode
-            {
-                Name = nodeDef.Name,
-                FullName = $"{nodeDef.Category}.{nodeDef.Name}",
-                Category = nodeDef.Category,
-                Type = UsableNodeType.Process,
-                Summary = nodeDef.Summary,
-                Remarks = nodeDef.Remarks,
-                Tags = nodeDef.Tags,
-                IsGeneric = nodeDef.IsGeneric,
-                HasState = nodeDef.HasStateOut,
-                Source = document.FileName
-            };
+            var node = MakeNode(nodeDef, nodeDef.Name, UsableNodeType.Process, document,
+                BuildFullName(nodeDef.Category, nodeDef.Name, nodeDef.Version));
+            node.HasState = true; // all process nodes are stateful by definition
 
-            // For processes, we combine pins from all active methods
-            var allInputPins = new Dictionary<string, UsablePin>();
-            var allOutputPins = new Dictionary<string, UsablePin>();
+            // Prefer the Update operation pins (the primary user-facing interface).
+            // Fall back to all active methods if no Update is present.
+            var updateMethod = nodeDef.ActiveMethods.FirstOrDefault(m =>
+                m.Name.Equals("Update", StringComparison.OrdinalIgnoreCase));
+            var sources = updateMethod != null
+                ? [updateMethod]
+                : (nodeDef.ActiveMethods.Count > 0 ? nodeDef.ActiveMethods : nodeDef.Methods);
 
-            foreach (var method in nodeDef.ActiveMethods)
+            var seenIn  = new HashSet<string>(StringComparer.Ordinal);
+            var seenOut = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var method in sources)
             {
                 foreach (var pin in method.InputPins.Where(p => !p.IsHidden))
-                {
-                    var usablePin = ConvertVLPinToUsablePin(pin);
-                    allInputPins[pin.Name] = usablePin;
-                }
-
+                    if (seenIn.Add(pin.Name)) node.Inputs.Add(ConvertPin(pin));
                 foreach (var pin in method.OutputPins.Where(p => !p.IsHidden))
-                {
-                    var usablePin = ConvertVLPinToUsablePin(pin);
-                    allOutputPins[pin.Name] = usablePin;
-                }
+                    if (seenOut.Add(pin.Name)) node.Outputs.Add(ConvertPin(pin));
             }
 
-            processNode.Inputs = allInputPins.Values.ToList();
-            processNode.Outputs = allOutputPins.Values.ToList();
+            // Fall back to pre-computed pins if methods produced nothing
+            if (node.Inputs.Count == 0 && node.Outputs.Count == 0)
+            {
+                foreach (var pin in nodeDef.InputPins)  node.Inputs.Add(ConvertPin(pin));
+                foreach (var pin in nodeDef.OutputPins) node.Outputs.Add(ConvertPin(pin));
+            }
 
-            return processNode;
+            return node;
         }
+
+        // ─── Operation ─────────────────────────────────────────────────────────
 
         private UsableNode ExtractFromOperation(VLNodeDefinition nodeDef, VLDocument document)
         {
-            var operationNode = new UsableNode
-            {
-                Name = nodeDef.Name,
-                FullName = $"{nodeDef.Category}.{nodeDef.Name}",
-                Category = nodeDef.Category,
-                Type = UsableNodeType.Operation,
-                Summary = nodeDef.Summary,
-                Remarks = nodeDef.Remarks,
-                Tags = nodeDef.Tags,
-                IsGeneric = nodeDef.IsGeneric,
-                Source = document.FileName
-            };
+            var node = MakeNode(nodeDef, nodeDef.Name, UsableNodeType.Operation, document,
+                BuildFullName(nodeDef.Category, nodeDef.Name, nodeDef.Version));
 
-            // For operations, we use the pins from the main operation method
             var mainMethod = nodeDef.Methods.FirstOrDefault();
             if (mainMethod != null)
             {
                 foreach (var pin in mainMethod.InputPins.Where(p => !p.IsHidden))
-                {
-                    operationNode.Inputs.Add(ConvertVLPinToUsablePin(pin));
-                }
-
+                    node.Inputs.Add(ConvertPin(pin));
                 foreach (var pin in mainMethod.OutputPins.Where(p => !p.IsHidden))
-                {
-                    operationNode.Outputs.Add(ConvertVLPinToUsablePin(pin));
-                }
+                    node.Outputs.Add(ConvertPin(pin));
             }
             else
             {
-                // Fallback to the computed pins from the node definition
-                foreach (var pin in nodeDef.InputPins)
-                {
-                    operationNode.Inputs.Add(ConvertVLPinToUsablePin(pin));
-                }
-
-                foreach (var pin in nodeDef.OutputPins)
-                {
-                    operationNode.Outputs.Add(ConvertVLPinToUsablePin(pin));
-                }
+                foreach (var pin in nodeDef.InputPins)  node.Inputs.Add(ConvertPin(pin));
+                foreach (var pin in nodeDef.OutputPins) node.Outputs.Add(ConvertPin(pin));
             }
 
-            return operationNode;
+            return node;
         }
 
-        private UsablePin ConvertVLPinToUsablePin(VLPin vlPin)
+        // ─── Helpers ───────────────────────────────────────────────────────────
+
+        private static UsableNode MakeNode(VLNodeDefinition nodeDef, string name,
+            UsableNodeType type, VLDocument document, string fullName)
+        {
+            return new UsableNode
+            {
+                Name     = name,
+                Version  = nodeDef.Version,
+                Category = nodeDef.Category,
+                FullName = fullName,
+                Type     = type,
+                Summary  = nodeDef.Summary,
+                Remarks  = nodeDef.Remarks,
+                Tags     = nodeDef.Tags,
+                IsGeneric = nodeDef.IsGeneric,
+                HasState  = nodeDef.HasStateOut,
+                Source    = document.FileName
+            };
+        }
+
+        /// <summary>
+        /// Builds the full name: "Category.Name" or "Category.Name (Version)" when version is set.
+        /// </summary>
+        private static string BuildFullName(string category, string name, string version)
+        {
+            var base_ = string.IsNullOrEmpty(category) ? name : $"{category}.{name}";
+            return string.IsNullOrEmpty(version) ? base_ : $"{base_} ({version})";
+        }
+
+        private static string SlotTypeName(VLSlot slot) =>
+            slot.TypeInfo?.TypeName is { Length: > 0 } t ? t : "Object";
+
+        private static UsablePin ConvertPin(VLPin vlPin)
         {
             return new UsablePin
             {
-                Name = vlPin.Name,
-                Type = vlPin.TypeInfo?.TypeName ?? "Object",
-                Summary = vlPin.Summary,
+                Name         = vlPin.Name,
+                Type         = vlPin.TypeInfo?.TypeName is { Length: > 0 } t ? t : "Object",
+                Summary      = vlPin.Summary,
                 DefaultValue = vlPin.DefaultValue,
-                IsOptional = !string.IsNullOrEmpty(vlPin.DefaultValue)
+                // A pin is optional if it has an explicit Optional/OnlyInspector visibility,
+                // or if it has a default value (heuristic for non-annotated pins).
+                IsOptional   = vlPin.IsOptional || !string.IsNullOrEmpty(vlPin.DefaultValue),
+                IsGeneric    = vlPin.TypeInfo?.IsGeneric ?? false
             };
         }
     }

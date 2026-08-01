@@ -147,7 +147,19 @@ namespace VvvvPluginAnalyzer
             Directory.CreateDirectory(outputDir);
 
             var subDirs = Directory.GetDirectories(packsFolder)
-                .Where(d => !Path.GetFileName(d).Equals("dependencies", StringComparison.OrdinalIgnoreCase))
+                .Where(d => {
+                    var name = Path.GetFileName(d);
+                    // Skip the dependency cache
+                    if (name.Equals("dependencies", StringComparison.OrdinalIgnoreCase)) return false;
+                    // Skip vvvv editor-internal packages — they expose HDE/editor nodes
+                    // that are not relevant to user-facing patching or MCP catalog queries.
+                    // VL.HDE is the main editor package; *_HDE_* are editor-only plugins.
+                    if (name.Equals("VL.HDE", StringComparison.OrdinalIgnoreCase)) return false;
+                    if (name.StartsWith("VL.HDE.", StringComparison.OrdinalIgnoreCase)) return false;
+                    if (name.Contains("_HDE_", StringComparison.OrdinalIgnoreCase)) return false;
+                    if (name.EndsWith(".HDE", StringComparison.OrdinalIgnoreCase)) return false;
+                    return true;
+                })
                 .OrderBy(d => d)
                 .ToList();
 

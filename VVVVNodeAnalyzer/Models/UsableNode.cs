@@ -9,8 +9,14 @@ namespace VvvvPluginAnalyzer.Models
     public class UsableNode
     {
         public string Name { get; set; } = "";
+        /// <summary>
+        /// Version label from the node name, e.g. "Count" from "Split (Count)".
+        /// Empty means the node has no version qualifier.
+        /// </summary>
+        public string Version { get; set; } = "";
         public string Category { get; set; } = "";
-        public string FullName { get; set; } = ""; // Category.Name
+        /// <summary>Category.Name, or Category.Name (Version) when Version is set.</summary>
+        public string FullName { get; set; } = "";
         public UsableNodeType Type { get; set; }
         public string Summary { get; set; } = "";
         public string Remarks { get; set; } = "";

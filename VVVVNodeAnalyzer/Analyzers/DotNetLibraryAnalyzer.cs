@@ -262,7 +262,11 @@ namespace VvvvPluginAnalyzer.Analyzers
                 var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static)
                     .Where(p => p.DeclaringType == type);
                 foreach (var property in properties)
-                    nodes.Add(CreateNodeFromProperty(property, type, xmlDoc));
+                {
+                    // In VL, each .NET property becomes two separate nodes: a getter and a setter.
+                    // We emit them as separate DotNetNodeInfo entries.
+                    nodes.AddRange(CreateNodesFromProperty(property, type, xmlDoc));
+                }
             }
 
             return nodes;
@@ -324,55 +328,59 @@ namespace VvvvPluginAnalyzer.Analyzers
             return node;
         }
 
-        private DotNetNodeInfo CreateNodeFromProperty(PropertyInfo property, Type declaringType, XDocument? xmlDoc)
+        /// <summary>
+        /// In vvvv, a .NET public property becomes two separate nodes:
+        ///   - Getter: [instance] → [property value]
+        ///   - Setter: [instance, new value] → [instance]
+        /// Both nodes are returned (only getter if write-only, only setter if read-only).
+        /// </summary>
+        private List<DotNetNodeInfo> CreateNodesFromProperty(PropertyInfo property, Type declaringType, XDocument? xmlDoc)
         {
-            var node = new DotNetNodeInfo
-            {
-                Name = property.Name,
-                Category = $"{declaringType.Namespace}.{declaringType.Name}",
-                FullName = $"{declaringType.FullName}.{property.Name}",
-                NodeType = "Property",
-                IsStatic = property.GetMethod?.IsStatic ?? property.SetMethod?.IsStatic ?? false,
-                DeclaringType = declaringType.FullName ?? declaringType.Name
-            };
+            var result   = new List<DotNetNodeInfo>();
+            var isStatic = property.GetMethod?.IsStatic ?? property.SetMethod?.IsStatic ?? false;
+            var typeName = GetFriendlyTypeName(declaringType);
+            var propType = GetFriendlyTypeName(property.PropertyType);
+            var xmlKey   = $"P:{declaringType.FullName}.{property.Name}";
+            var doc      = GetXmlDocumentation(xmlDoc, xmlKey);
 
-            var xmlKey = $"P:{declaringType.FullName}.{property.Name}";
-            node.Documentation = GetXmlDocumentation(xmlDoc, xmlKey);
-
-            if (!node.IsStatic)
+            if (property.CanRead)
             {
-                node.InputPins.Add(new NodePin
+                var getter = new DotNetNodeInfo
                 {
-                    Name = "Input",
-                    Type = GetFriendlyTypeName(declaringType),
-                    IsOptional = false,
-                    Documentation = "Instance of the object"
-                });
+                    Name          = property.Name,
+                    Category      = $"{declaringType.Namespace}.{declaringType.Name}",
+                    FullName      = $"{declaringType.FullName}.{property.Name}",
+                    NodeType      = "Getter",
+                    IsStatic      = isStatic,
+                    DeclaringType = declaringType.FullName ?? declaringType.Name,
+                    Documentation = doc
+                };
+                if (!isStatic)
+                    getter.InputPins.Add(new NodePin { Name = "Input", Type = typeName, IsOptional = false });
+                getter.OutputPins.Add(new NodePin { Name = property.Name, Type = propType, IsOptional = false });
+                result.Add(getter);
             }
 
             if (property.CanWrite)
             {
-                node.InputPins.Add(new NodePin
+                var setter = new DotNetNodeInfo
                 {
-                    Name = "Value",
-                    Type = GetFriendlyTypeName(property.PropertyType),
-                    IsOptional = false,
-                    Documentation = "Value to set"
-                });
+                    Name          = $"Set {property.Name}",
+                    Category      = $"{declaringType.Namespace}.{declaringType.Name}",
+                    FullName      = $"{declaringType.FullName}.Set{property.Name}",
+                    NodeType      = "Setter",
+                    IsStatic      = isStatic,
+                    DeclaringType = declaringType.FullName ?? declaringType.Name,
+                    Documentation = doc
+                };
+                if (!isStatic)
+                    setter.InputPins.Add(new NodePin { Name = "Input", Type = typeName, IsOptional = false });
+                setter.InputPins.Add(new NodePin { Name = property.Name, Type = propType, IsOptional = false });
+                setter.OutputPins.Add(new NodePin { Name = "Output", Type = typeName, IsOptional = false });
+                result.Add(setter);
             }
 
-            if (property.CanRead)
-            {
-                node.OutputPins.Add(new NodePin
-                {
-                    Name = "Output",
-                    Type = GetFriendlyTypeName(property.PropertyType),
-                    IsOptional = false,
-                    Documentation = "Property value"
-                });
-            }
-
-            return node;
+            return result;
         }
 
         private string GenerateXmlDocKey(MethodInfo method)
@@ -393,47 +401,53 @@ namespace VvvvPluginAnalyzer.Analyzers
         }
 
         /// <summary>
-        /// Returns a human-readable type name. Uses full-name string comparisons
-        /// because types from MetadataLoadContext cannot be compared with == to
-        /// types from the runtime context.
+        /// Returns the VL-idiomatic type name for a .NET type.
+        /// vvvv uses its own names that differ from C# aliases:
+        ///   int   → Integer32,  float  → Float32,  bool → Boolean,
+        ///   long  → Integer64,  double → Float64,  byte → Byte
+        /// IEnumerable&lt;T&gt; → Sequence&lt;T&gt;  (VL lazy sequence type)
         /// </summary>
         private string GetFriendlyTypeName(Type type)
         {
-            var fullName = type.FullName ?? type.Name;
-
-            // Strip by-ref marker
             if (type.IsByRef)
-                return GetFriendlyTypeName(type.GetElementType()!) + "&";
+                return GetFriendlyTypeName(type.GetElementType()!);
+
+            var fullName = type.FullName ?? type.Name;
 
             return fullName switch
             {
                 "System.Void"    => "void",
-                "System.Int32"   => "int",
-                "System.String"  => "string",
-                "System.Boolean" => "bool",
-                "System.Single"  => "float",
-                "System.Double"  => "double",
-                "System.Decimal" => "decimal",
-                "System.Int64"   => "long",
-                "System.Int16"   => "short",
-                "System.Byte"    => "byte",
-                "System.Char"    => "char",
-                "System.Object"  => "object",
-                _ => BuildGenericOrArrayName(type)
+                "System.Boolean" => "Boolean",
+                "System.Byte"    => "Byte",
+                "System.Int16"   => "Integer16",
+                "System.Int32"   => "Integer32",
+                "System.Int64"   => "Integer64",
+                "System.Single"  => "Float32",
+                "System.Double"  => "Float64",
+                "System.Decimal" => "Float64",   // no Decimal in VL, map to Float64
+                "System.Char"    => "Char",
+                "System.String"  => "String",
+                "System.Object"  => "Object",
+                _                => BuildVlGenericName(type)
             };
         }
 
-        private string BuildGenericOrArrayName(Type type)
+        private string BuildVlGenericName(Type type)
         {
             if (type.IsArray)
-                return $"{GetFriendlyTypeName(type.GetElementType()!)}[]";
+                return $"Array<{GetFriendlyTypeName(type.GetElementType()!)}>";
 
             if (type.IsGenericType)
             {
                 var backtick = type.Name.IndexOf('`');
-                var baseName = backtick >= 0 ? type.Name[..backtick] : type.Name;
-                var args = type.GetGenericArguments().Select(GetFriendlyTypeName);
-                return $"{baseName}<{string.Join(", ", args)}>";
+                var rawName  = backtick >= 0 ? type.Name[..backtick] : type.Name;
+                var args     = type.GetGenericArguments().Select(GetFriendlyTypeName).ToArray();
+
+                // VL uses Sequence<T> for IEnumerable<T>
+                if (rawName is "IEnumerable" or "IEnumerator")
+                    return $"Sequence<{string.Join(", ", args)}>";
+
+                return $"{rawName}<{string.Join(", ", args)}>";
             }
 
             return type.Name;
