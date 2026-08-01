@@ -158,14 +158,6 @@ git tag v0.3.0
 git push --tags
 ```
 
-Uses [NuGet Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing) — no API keys stored anywhere. Configure once on [nuget.org/account/trustedpublishing](https://www.nuget.org/account/trustedpublishing):
-
-| Field | Value |
-|---|---|
-| Repository owner | `digital.wannabe` |
-| Repository | `mcp-gamma-server` |
-| Workflow file | `publish.yml` |
-
 ---
 
 ## Repository Structure

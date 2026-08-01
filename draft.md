@@ -204,3 +204,11 @@ this eliminates the usual "how do i debug my ipc server" problem. the bridge is 
 - simulate mouse/keyboard input (fragile, os-specific)
 - recompile vl documents (vvvv does this itself on file save)
 - manage vvvv process lifecycle from the mcp (out of scope — multiple versions may run)
+
+
+
+other stuff:
+
+- since vvvv gamma is .net based, a lot of programming patterns from standard C#/.NET development apply, a lot of .net/c# libraries run out of the box, debugging can be done in vs, etc. it would make sense when our vvvv mcp is also a .net expert, making use of skills or similar, eg https://github.com/wieslawsoltes/Performance-Skill
+same for hlsl, since sdsl is "only" a superset
+not sure if we will also need an xml expert in the mix, we will see....
