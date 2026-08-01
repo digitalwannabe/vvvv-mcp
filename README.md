@@ -98,7 +98,7 @@ The MCP is completely independent of any vvvv installation. It works whether or 
 
 ### Catalog (`vvvv://catalog/`)
 
-| URI | Content |
+| URI | Content | 
 |---|---|
 | `vvvv://catalog/stats` | Node count by type, packages, top categories |
 | `vvvv://catalog/categories` | Full sorted category list |
@@ -153,8 +153,8 @@ npx @modelcontextprotocol/inspector -- dotnet src/VvvvMcp/bin/Debug/net8.0/VvvvM
 ./scripts/publish.ps1 -Version 0.3.0
 
 # 2. Commit, tag, push — GitHub Actions publishes to NuGet.org automatically
-git add -A && git commit -m "release 0.3.0"
-git tag v0.3.0
+git add -A && git commit -m "release 0.5.0"
+git tag v0.5.0
 git push --tags
 ```
 
