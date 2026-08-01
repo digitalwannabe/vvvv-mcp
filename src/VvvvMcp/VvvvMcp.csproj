@@ -5,6 +5,17 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
+    <!-- dotnet global tool -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>vvvv-mcp</ToolCommandName>
+    <PackageId>vvvv-mcp</PackageId>
+    <Version>0.2.0</Version>
+    <Description>MCP server for vvvv gamma — node search, patch reading, full Gray Book knowledge base.</Description>
+    <Authors>vvvv community</Authors>
+    <PackageTags>vvvv;mcp;ai;modelcontextprotocol</PackageTags>
+    <PackageProjectUrl>https://github.com/domjancik/vvvv-mcp</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,6 +26,25 @@
 
   <ItemGroup>
     <ProjectReference Include="..\VvvvMcp.Core\VvvvMcp.Core.csproj" />
+  </ItemGroup>
+
+  <!--
+    Bundle the node catalog and knowledge files alongside the binary so the tool
+    works out-of-the-box after `dotnet tool install` without any extra setup step.
+    Knowledge files are flat *.md files; the submodule directories are not included.
+  -->
+  <ItemGroup>
+    <Content Include="..\..\VVVVNodeAnalyzer\output\vvvv_nodes_mcp.json"
+             CopyToOutputDirectory="PreserveNewest"
+             Link="vvvv_nodes_mcp.json" />
+    <Content Include="..\..\knowledge\*.md"
+             CopyToOutputDirectory="PreserveNewest"
+             Link="knowledge\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!-- README for NuGet -->
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
 
 </Project>

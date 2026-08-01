@@ -2,6 +2,40 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for [vvvv gamma](https://vvvv.org) — giving AI agents deep knowledge of vvvv's node API, the ability to read and explain `.vl` patches, and access to the full official documentation.
 
+Works **without a vvvv installation** — for searching nodes, explaining patches, and generating new patches. vvvv does not need to be installed or running.
+
+---
+
+## Install (end users)
+
+Requires [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) or later.
+
+```powershell
+# Install globally
+dotnet tool install -g vvvv-mcp
+
+# Configure your MCP client (Claude Desktop, VS Code, Cursor) automatically
+vvvv-mcp --setup
+```
+
+`--setup` detects which MCP clients are installed, writes their config files, and prints the config snippet for anything it can't auto-detect. Run it again after updating.
+
+### Update
+
+```powershell
+dotnet tool update -g vvvv-mcp
+```
+
+### Refresh the node catalog
+
+The catalog ships as a snapshot with the tool. To pull the latest packages from NuGet and rebuild it (requires cloning this repo):
+
+```powershell
+git clone https://github.com/domjancik/vvvv-mcp
+cd vvvv-mcp
+./scripts/update-catalog.ps1
+```
+
 ---
 
 ## What it does
@@ -11,16 +45,15 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for [v
 - **Access the full vvvv knowledge base** — the entire Gray Book, all of tebjan's agent skills, and a curated package reference, served as MCP resources
 - **Generate** new `.vl` patches and custom C# nodes (prompt-guided)
 
-The MCP server is designed to be called by AI agents (Claude, Cursor, Copilot, etc.) via the MCP protocol over stdio.
+The MCP is completely independent of any vvvv installation. It works whether or not vvvv is installed, and is not tied to any specific vvvv version.
 
 ---
 
-## Quick Start
+## Developer / contributor setup
 
 ### Prerequisites
 
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-- Node catalog file: `VVVVNodeAnalyzer/output/vvvv_nodes_mcp.json` (pre-generated, or regenerate with `scripts/update-catalog.ps1`)
 
 ### Build
 
@@ -28,49 +61,18 @@ The MCP server is designed to be called by AI agents (Claude, Cursor, Copilot, e
 dotnet build src/VvvvMcp.sln
 ```
 
-### Configure an MCP client
+### Run locally (without installing as a global tool)
 
-**VS Code / Cursor** (`.vscode/mcp.json`):
-
-```json
-{
-  "servers": {
-    "vvvv": {
-      "type": "stdio",
-      "command": "dotnet",
-      "args": ["x:/_dev/vvvv-mcp/src/VvvvMcp/bin/Debug/net8.0/VvvvMcp.dll"],
-      "env": {
-        "VVVV_MCP_CATALOG":   "x:/_dev/vvvv-mcp/VVVVNodeAnalyzer/output/vvvv_nodes_mcp.json",
-        "VVVV_MCP_KNOWLEDGE": "x:/_dev/vvvv-mcp/knowledge"
-      }
-    }
-  }
-}
+```powershell
+dotnet run --project src/VvvvMcp -- --setup   # configure MCP clients to use this build
 ```
 
-**Claude Desktop** (`%APPDATA%\Claude\claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "vvvv": {
-      "command": "dotnet",
-      "args": ["x:/_dev/vvvv-mcp/src/VvvvMcp/bin/Debug/net8.0/VvvvMcp.dll"],
-      "env": {
-        "VVVV_MCP_CATALOG":   "x:/_dev/vvvv-mcp/VVVVNodeAnalyzer/output/vvvv_nodes_mcp.json",
-        "VVVV_MCP_KNOWLEDGE": "x:/_dev/vvvv-mcp/knowledge"
-      }
-    }
-  }
-}
-```
-
-**Environment variables:**
+**Environment variables** (auto-detected when using `--setup`, or set manually):
 
 | Variable | Description |
 |---|---|
-| `VVVV_MCP_CATALOG` | Path to `vvvv_nodes_mcp.json`. Falls back to searching relative to the binary. |
-| `VVVV_MCP_KNOWLEDGE` | Path to the `knowledge/` directory. Falls back to searching relative to the binary. |
+| `VVVV_MCP_CATALOG` | Path to `vvvv_nodes_mcp.json`. Auto-detected when not set. |
+| `VVVV_MCP_KNOWLEDGE` | Path to the `knowledge/` directory. Auto-detected when not set. |
 
 ### Test with MCP Inspector
 

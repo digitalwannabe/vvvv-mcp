@@ -9,3 +9,11 @@
 /src/VvvvMcp.Core/obj/
 /src/VvvvMcp.Core/bin/
 packs-community/
+# Generated analysis files per-package (not the main catalog)
+VVVVNodeAnalyzer/**/analysis.json
+VVVVNodeAnalyzer/**/analysis.md
+VVVVNodeAnalyzer/**/usable-nodes.json
+VVVVNodeAnalyzer/**/usable-nodes.md
+# NuGet tool package output
+*.nupkg
+/nupkg/
