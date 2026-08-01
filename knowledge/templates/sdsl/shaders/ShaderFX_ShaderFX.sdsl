@@ -1,0 +1,10 @@
+[Summary("")]
+shader ShaderFX_ShaderFX : ComputeFloat4
+{
+    float4 MyColor;
+
+    override float4 Compute()
+    {
+        return MyColor;
+    }
+};

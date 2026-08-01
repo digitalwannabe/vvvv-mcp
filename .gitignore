@@ -17,3 +17,8 @@ VVVVNodeAnalyzer/**/usable-nodes.md
 # Local secrets — never commit
 .env
 
+knowledge/templates/csharp/.vs/
+knowledge/templates/csharp/bin/
+knowledge/templates/csharp/obj/
+knowledge/templates/sdsl/EditShaders/obj/
+knowledge/templates/sdsl/EditShaders/bin/

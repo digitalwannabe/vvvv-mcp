@@ -1,0 +1,13 @@
+[Summary("")]
+shader ComputeFX_ComputeFX : ComputeShaderBase
+{
+	float Constant = 1;
+	RWBuffer<float> Values;
+
+    override void Compute()
+    {
+        uint index = streams.DispatchThreadId.x;
+        
+        Values[index] *= Constant;
+    }
+};
