@@ -150,11 +150,11 @@ npx @modelcontextprotocol/inspector -- dotnet src/VvvvMcp/bin/Debug/net8.0/VvvvM
 
 ```powershell
 # 1. Test the package locally (optional)
-./scripts/publish.ps1 -Version 0.6.0
+./scripts/publish.ps1 -Version 0.7.0
 
 # 2. Commit, tag, push — GitHub Actions publishes to NuGet.org automatically
-git add -A && git commit -m "release 0.6.0"
-git tag v0.6.0
+git add -A && git commit -m "release 0.7.0"
+git tag v0.7.0
 git push origin main --tags
 ```
 
