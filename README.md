@@ -31,7 +31,7 @@ dotnet tool update -g vvvv-mcp
 The catalog ships as a snapshot with the tool. To pull the latest packages from NuGet and rebuild it (requires cloning this repo):
 
 ```powershell
-git clone https://github.com/domjancik/vvvv-mcp
+git clone https://github.com/digitalwannabe/mcp-gamma-server
 cd vvvv-mcp
 ./scripts/update-catalog.ps1
 ```
@@ -43,42 +43,9 @@ cd vvvv-mcp
 - **Search** 6,400+ vvvv nodes by name, category, or keyword across all core packages
 - **Read and explain** `.vl` patch files — parse the dataflow graph and describe it in natural language
 - **Access the full vvvv knowledge base** — the entire Gray Book, all of tebjan's agent skills, and a curated package reference, served as MCP resources
-- **Generate** new `.vl` patches and custom C# nodes (prompt-guided)
+- **Generate** new `.vl` patches and custom C# nodes (prompt-guided) - (not yet implemented)
 
 The MCP is completely independent of any vvvv installation. It works whether or not vvvv is installed, and is not tied to any specific vvvv version.
-
----
-
-## Developer / contributor setup
-
-### Prerequisites
-
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-
-### Build
-
-```powershell
-dotnet build src/VvvvMcp.sln
-```
-
-### Run locally (without installing as a global tool)
-
-```powershell
-dotnet run --project src/VvvvMcp -- --setup   # configure MCP clients to use this build
-```
-
-**Environment variables** (auto-detected when using `--setup`, or set manually):
-
-| Variable | Description |
-|---|---|
-| `VVVV_MCP_CATALOG` | Path to `vvvv_nodes_mcp.json`. Auto-detected when not set. |
-| `VVVV_MCP_KNOWLEDGE` | Path to the `knowledge/` directory. Auto-detected when not set. |
-
-### Test with MCP Inspector
-
-```bash
-npx @modelcontextprotocol/inspector -- dotnet src/VvvvMcp/bin/Debug/net8.0/VvvvMcp.dll
-```
 
 ---
 
@@ -154,6 +121,39 @@ npx @modelcontextprotocol/inspector -- dotnet src/VvvvMcp/bin/Debug/net8.0/VvvvM
 | `explain_vl_patch` | Guided workflow for reading and explaining a `.vl` patch file |
 | `create_vl_patch` | Step-by-step guidance for generating a new `.vl` patch from a description |
 | `create_csharp_node` | Template and guidance for creating a custom C# node |
+
+---
+
+## Developer / contributor setup
+
+### Prerequisites
+
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+
+### Build
+
+```powershell
+dotnet build src/VvvvMcp.sln
+```
+
+### Run locally (without installing as a global tool)
+
+```powershell
+dotnet run --project src/VvvvMcp -- --setup   # configure MCP clients to use this build
+```
+
+**Environment variables** (auto-detected when using `--setup`, or set manually):
+
+| Variable | Description |
+|---|---|
+| `VVVV_MCP_CATALOG` | Path to `vvvv_nodes_mcp.json`. Auto-detected when not set. |
+| `VVVV_MCP_KNOWLEDGE` | Path to the `knowledge/` directory. Auto-detected when not set. |
+
+### Test with MCP Inspector
+
+```bash
+npx @modelcontextprotocol/inspector -- dotnet src/VvvvMcp/bin/Debug/net8.0/VvvvMcp.dll
+```
 
 ---
 

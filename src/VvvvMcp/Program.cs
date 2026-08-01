@@ -155,6 +155,6 @@ static void PrintHelp()
         Update catalog (downloads all vvvv packages from NuGet, no vvvv install needed):
           ./scripts/update-catalog.ps1
 
-        Docs: https://github.com/domjancik/vvvv-mcp
+        Docs: https://github.com/digitalwannabe/mcp-gamma-server
         """);
 }

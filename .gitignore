@@ -14,6 +14,7 @@ VVVVNodeAnalyzer/**/analysis.json
 VVVVNodeAnalyzer/**/analysis.md
 VVVVNodeAnalyzer/**/usable-nodes.json
 VVVVNodeAnalyzer/**/usable-nodes.md
-# NuGet tool package output
+# Local secrets — never commit
+.env
 *.nupkg
 /nupkg/
