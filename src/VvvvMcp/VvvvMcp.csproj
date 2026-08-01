@@ -9,7 +9,7 @@
     <ToolCommandName>vvvv-mcp</ToolCommandName>
     <!-- NuGet package metadata -->
     <PackageId>vvvv-mcp</PackageId>
-    <Version>0.3.0</Version>
+    <Version>0.6.0</Version>
     <Title>vvvv-mcp</Title>
     <Description>MCP server for vvvv gamma â€” node search (6,400+ nodes), patch reading and explanation, and the full Gray Book knowledge base. Works without a vvvv installation. Run `vvvv-mcp --setup` after install to configure your AI client.</Description>
     <Authors>digital.wannabe</Authors>
@@ -30,13 +30,14 @@
     <ProjectReference Include="..\VvvvMcp.Core\VvvvMcp.Core.csproj" />
   </ItemGroup>
   <!--
-    Bundle the node catalog and knowledge files into the tool directory only.
-    PackagePath="tools/net8.0/any/" ensures they land next to the binary
-    and are found via AppContext.BaseDirectory, without polluting content/.
+    Bundle the node catalog and knowledge files.
+    CopyToOutputDirectory copies them into bin/Release/net8.0/; for PackAsTool,
+    dotnet pack automatically includes the entire build output in tools/net8.0/any/,
+    so no separate Pack="true" items are needed (which would cause duplicate-file errors).
   -->
   <ItemGroup>
-    <None Include="..\..\VVVVNodeAnalyzer\output\vvvv_nodes_mcp.json" CopyToOutputDirectory="PreserveNewest" Link="vvvv_nodes_mcp.json" Pack="true" PackagePath="tools/net8.0/any/" />
-    <None Include="..\..\knowledge\*.md" CopyToOutputDirectory="PreserveNewest" Link="knowledge\%(Filename)%(Extension)" Pack="true" PackagePath="tools/net8.0/any/knowledge/" />
+    <None Include="..\..\VVVVNodeAnalyzer\output\vvvv_nodes_mcp.json" CopyToOutputDirectory="PreserveNewest" Link="vvvv_nodes_mcp.json" />
+    <None Include="..\..\knowledge\*.md" CopyToOutputDirectory="PreserveNewest" Link="knowledge\%(Filename)%(Extension)" />
   </ItemGroup>
   <!-- README for NuGet package page -->
   <ItemGroup>
