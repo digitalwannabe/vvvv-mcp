@@ -129,6 +129,73 @@ public class BridgeClientService : IDisposable
         return await GetAsync<List<BridgeChannelInfo>>("/api/channels");
     }
 
+    // ── Document Operations ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Open a .vl document in vvvv.
+    /// </summary>
+    public async Task<BridgeOperationResult?> OpenDocumentAsync(string filePath)
+    {
+        return await PostAsync<BridgeOperationResult>("/api/documents/open",
+            new { filePath });
+    }
+
+    /// <summary>
+    /// Create a new .vl document.
+    /// </summary>
+    public async Task<BridgeOperationResult?> NewDocumentAsync(string filePath)
+    {
+        return await PostAsync<BridgeOperationResult>("/api/documents/new",
+            new { filePath });
+    }
+
+    /// <summary>
+    /// Close a document by file path.
+    /// </summary>
+    public async Task<BridgeOperationResult?> CloseDocumentAsync(string filePath, bool save = false)
+    {
+        return await PostAsync<BridgeOperationResult>("/api/documents/close",
+            new { filePath, save });
+    }
+
+    /// <summary>
+    /// Save a specific document.
+    /// </summary>
+    public async Task<BridgeOperationResult?> SaveDocumentAsync(string filePath)
+    {
+        return await PostAsync<BridgeOperationResult>("/api/documents/save",
+            new { filePath });
+    }
+
+    /// <summary>
+    /// Save all open documents.
+    /// </summary>
+    public async Task<BridgeOperationResult?> SaveAllAsync()
+    {
+        return await PostAsync<BridgeOperationResult>("/api/documents/save-all", new { });
+    }
+
+    /// <summary>
+    /// Navigate to / open a document (brings to front if already open).
+    /// </summary>
+    public async Task<BridgeOperationResult?> NavigateAsync(string filePath)
+    {
+        return await PostAsync<BridgeOperationResult>("/api/navigate",
+            new { filePath });
+    }
+
+    // ── Log ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Get recent log entries from vvvv's console.
+    /// </summary>
+    public async Task<BridgeLogResponse?> GetLogAsync(int limit = 50, string? severity = null)
+    {
+        var query = $"/api/log?limit={limit}";
+        if (severity is not null) query += $"&severity={severity}";
+        return await GetAsync<BridgeLogResponse>(query);
+    }
+
     // ── Internal helpers ──────────────────────────────────────────────────
 
     private async Task<T?> GetAsync<T>(string path) where T : class
@@ -185,6 +252,9 @@ public class BridgeDocumentInfo
     public string Name { get; set; } = "";
     public string FilePath { get; set; } = "";
     public bool IsActive { get; set; }
+    public bool IsSaved { get; set; }
+    public bool IsChanged { get; set; }
+    public bool IsReadOnly { get; set; }
 }
 
 public class BridgeErrorInfo
@@ -222,4 +292,29 @@ public class BridgeChannelInfo
     public string? Type { get; set; }
     public string? Value { get; set; }
     public string? Direction { get; set; }
+}
+
+public class BridgeOperationResult
+{
+    public bool Success { get; set; }
+    public string? FilePath { get; set; }
+    public string? Error { get; set; }
+    public string? Message { get; set; }
+    public string? Method { get; set; }
+    public string? Action { get; set; }
+}
+
+public class BridgeLogResponse
+{
+    public int Count { get; set; }
+    public List<BridgeLogEntry> Entries { get; set; } = new();
+}
+
+public class BridgeLogEntry
+{
+    public DateTime Timestamp { get; set; }
+    public string Severity { get; set; } = "";
+    public string Category { get; set; } = "";
+    public string Message { get; set; } = "";
+    public string? Exception { get; set; }
 }

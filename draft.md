@@ -260,3 +260,11 @@ not sure if we will also need an xml expert in the mix, we will see....
 4. **test the HDE.vl file** — it should auto-start the bridge; check that the C# node reference resolves correctly
 5. **add more endpoints** — once basic connection works, expand: live pin values, navigate-to-node, install packages, console output stream
 6. **package as NuGet** — `dotnet pack` the project or use `nuget pack VL.MCP.Bridge.nuspec` for distribution
+
+
+
+
+other stuff:
+- we should make the mcp aware of all the internal vvvv methods we found via our hde extension
+
+future: hde extension would allow to create an in-app chat for vvvvv, connecting to local or cloud llm directly....
