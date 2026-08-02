@@ -2,10 +2,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
+using System.Reflection;
 using VvvvMcp;
 using VvvvMcp.Core.Services;
 
 // ── Sub-commands (run before MCP server starts) ───────────────────────────────
+
+var appVersion = GetAppVersion();
 
 if (args.Length > 0)
 {
@@ -18,7 +21,7 @@ if (args.Length > 0)
 
         case "--version":
         case "version":
-            Console.WriteLine("vvvv-mcp 0.2.0");
+            Console.WriteLine($"vvvv-mcp {appVersion}");
             return;
 
         case "--help":
@@ -54,7 +57,7 @@ builder.Services
         options.ServerInfo = new()
         {
             Name    = "vvvv-mcp",
-            Version = "0.2.0"
+            Version = appVersion
         };
     })
     .WithStdioServerTransport()
@@ -170,4 +173,30 @@ static void PrintHelp()
 
         Docs: https://github.com/digitalwannabe/mcp-gamma-server
         """);
+}
+
+static string GetAppVersion()
+{
+    var assembly = typeof(Program).Assembly;
+
+    // Prefer informational version and strip build metadata suffix.
+    var informational = assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+        ?.InformationalVersion;
+
+    if (!string.IsNullOrWhiteSpace(informational))
+    {
+        return informational.Split('+')[0];
+    }
+
+    var fileVersion = assembly
+        .GetCustomAttribute<AssemblyFileVersionAttribute>()
+        ?.Version;
+
+    if (Version.TryParse(fileVersion, out var parsed) && parsed.Revision == 0)
+    {
+        return $"{parsed.Major}.{parsed.Minor}.{parsed.Build}";
+    }
+
+    return fileVersion ?? "0.0.0";
 }

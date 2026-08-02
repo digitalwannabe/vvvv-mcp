@@ -4,7 +4,7 @@
     NuGet.org publishing is handled by GitHub Actions (.github/workflows/publish.yml).
 
 .PARAMETER Version
-    Override the version in VvvvMcp.csproj (e.g. "0.3.0-preview").
+    Override the version in VvvvMcp.csproj (e.g. "0.8.0").
     Leave empty to use the version already in the csproj.
 
 .PARAMETER SkipBuild
@@ -12,11 +12,11 @@
 
 .EXAMPLE
     ./scripts/publish.ps1                      # build, pack, local install
-    ./scripts/publish.ps1 -Version 0.3.0       # bump version, build, pack, local install
+    ./scripts/publish.ps1 -Version 0.8.0       # bump version, build, pack, local install
 
 .NOTES
     To publish to NuGet.org:
-      git tag v0.3.0
+    git tag v0.8.0
       git push --tags
     GitHub Actions will handle the rest via Trusted Publishing.
 #>
@@ -73,13 +73,21 @@ Write-Host "Package: $($nupkg.Name) ($sizeMB MB)"
 # ---- Local install test ----------------------------------------------------
 
 Write-Host ""
-Write-Host "Installing locally..."
-dotnet tool uninstall -g vvvv-mcp 2>$null
-dotnet tool install -g --add-source $nupkgDir vvvv-mcp
-if ($LASTEXITCODE -ne 0) { Write-Error "Local install failed"; return }
+Write-Host "Installing to isolated test path..."
+$toolPath = Join-Path $repoRoot ".tmp\tool-test"
+if (Test-Path $toolPath) {
+    Remove-Item -Recurse -Force $toolPath
+}
+New-Item -ItemType Directory -Force -Path $toolPath | Out-Null
+
+dotnet tool install vvvv-mcp --tool-path $toolPath --add-source $nupkgDir --version $currentVersion
+if ($LASTEXITCODE -ne 0) { Write-Error "Local tool-path install failed"; return }
+
+$toolExe = Join-Path $toolPath "vvvv-mcp.exe"
+if (-not (Test-Path $toolExe)) { Write-Error "Tool executable not found: $toolExe"; return }
 
 Write-Host ""
-Write-Host "Installed: $(vvvv-mcp --version)"
+Write-Host "Installed: $(& $toolExe --version)"
 Write-Host ""
 Write-Host "Run 'vvvv-mcp --setup' to configure MCP clients."
 Write-Host ""

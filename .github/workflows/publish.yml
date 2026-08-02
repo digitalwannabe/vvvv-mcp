@@ -5,11 +5,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to publish (e.g. 0.3.0). Leave empty to use version in VvvvMcp.csproj."
+        description: "Version to publish (e.g. 0.8.0). Leave empty to use version in VvvvMcp.csproj."
         required: false
         default: ""
 
-  # Automatic trigger on version tags: git tag v0.3.0 && git push --tags
+  # Automatic trigger on version tags: git tag v0.8.0 && git push --tags
   push:
     tags:
       - "v*"
@@ -45,13 +45,13 @@ jobs:
           $xml.Save($csproj)
           Write-Host "Version set to ${{ inputs.version }}"
 
-      # Extract version from tag (v0.3.0 → 0.3.0) and set it in the csproj
+      # Extract version from tag (v0.8.0 → 0.8.0) and set it in the csproj
       - name: Set version (tag trigger)
         if: ${{ github.event_name == 'push' }}
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}"        # e.g. v0.3.0
-          $version = $tag.TrimStart("v")          # e.g. 0.3.0
+          $tag = "${{ github.ref_name }}"        # e.g. v0.8.0
+          $version = $tag.TrimStart("v")          # e.g. 0.8.0
           $csproj = "src/VvvvMcp/VvvvMcp.csproj"
           $xml = [xml](Get-Content $csproj)
           $xml.SelectSingleNode("//Version").InnerText = $version

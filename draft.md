@@ -268,3 +268,4 @@ other stuff:
 - we should make the mcp aware of all the internal vvvv methods we found via our hde extension
 
 future: hde extension would allow to create an in-app chat for vvvvv, connecting to local or cloud llm directly....
+
