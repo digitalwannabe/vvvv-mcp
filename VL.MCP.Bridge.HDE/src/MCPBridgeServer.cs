@@ -161,6 +161,12 @@ public class MCPBridgeServer
                 ("POST", "/api/documents/save-all") => HandleSaveAll(),
                 ("POST", "/api/reload") => HandleReload(request),
 
+                // ── Editor / Tabs ──
+                ("GET", "/api/tabs") => HandleGetTabs(),
+                ("POST", "/api/tabs/close") => HandleCloseTab(request),
+                ("POST", "/api/undo") => HandleUndo(request),
+                ("POST", "/api/redo") => HandleRedo(request),
+
                 // ── Log/Console ──
                 ("GET", "/api/log") => HandleGetLog(request),
                 ("DELETE", "/api/log") => HandleClearLog(),
@@ -673,6 +679,209 @@ public class MCPBridgeServer
         {
             return new { success = false, error = ex.Message };
         }
+    }
+
+    // ── Tabs / Editor ────────────────────────────────────────────────────────────
+
+    private object HandleGetTabs()
+    {
+        var result = new Dictionary<string, object?>();
+        var done = new ManualResetEventSlim(false);
+
+        PostToUIThread(() =>
+        {
+            try
+            {
+                var session = GetSession();
+                var mainForm = session?.GetType().GetProperty("MainForm")?.GetValue(session);
+                var editorControl = mainForm?.GetType().GetProperty("EditorControl")?.GetValue(mainForm);
+                if (editorControl is null) { result["error"] = "EditorControl not available"; done.Set(); return; }
+
+                // Get open patches (tabs)
+                var openPatches = editorControl.GetType().GetProperty("OpenPatches")?.GetValue(editorControl) as IEnumerable;
+                var tabs = new List<object>();
+                if (openPatches is not null)
+                {
+                    foreach (var patch in openPatches)
+                    {
+                        var pType = patch.GetType();
+                        var name = pType.GetProperty("Name")?.GetValue(patch)?.ToString();
+                        var filePath = pType.GetProperty("FilePath")?.GetValue(patch)?.ToString();
+                        tabs.Add(new { name, filePath, type = pType.Name });
+                    }
+                }
+                result["tabs"] = tabs;
+                result["count"] = tabs.Count;
+
+                // Get active canvas/tab
+                var activeWindow = editorControl.GetType().GetProperty("ActiveCanvasWindow")?.GetValue(editorControl);
+                if (activeWindow is not null)
+                {
+                    var awType = activeWindow.GetType();
+                    var activeName = awType.GetProperty("Text")?.GetValue(activeWindow)?.ToString()
+                                 ?? awType.GetProperty("Name")?.GetValue(activeWindow)?.ToString();
+                    result["activeTab"] = activeName;
+                }
+
+                // Get selected canvas
+                var selectedCanvas = editorControl.GetType().GetProperty("SelectedCanvas")?.GetValue(editorControl);
+                if (selectedCanvas is not null)
+                {
+                    var scType = selectedCanvas.GetType();
+                    var canvasName = scType.GetProperty("Name")?.GetValue(selectedCanvas)?.ToString();
+                    var canvasId = scType.GetProperty("SerializedId")?.GetValue(selectedCanvas)?.ToString()
+                               ?? scType.GetProperty("Id")?.GetValue(selectedCanvas)?.ToString();
+                    result["selectedCanvas"] = new { name = canvasName, id = canvasId };
+                }
+            }
+            catch (Exception ex) { result["error"] = ex.Message; }
+            finally { done.Set(); }
+        });
+
+        done.Wait(TimeSpan.FromSeconds(5));
+        return result;
+    }
+
+    private object HandleCloseTab(HttpListenerRequest request)
+    {
+        var body = ReadBody(request);
+        var doc = JsonDocument.Parse(body).RootElement;
+        var filePath = doc.TryGetProperty("filePath", out var fp) ? fp.GetString() : null;
+        var canvasId = doc.TryGetProperty("canvasId", out var cid) ? cid.GetString() : null;
+
+        if (string.IsNullOrEmpty(filePath))
+            return new { success = false, error = "filePath required" };
+
+        var result = new Dictionary<string, object?>();
+        var done = new ManualResetEventSlim(false);
+
+        PostToUIThread(() =>
+        {
+            try
+            {
+                var session = GetSession();
+                var mainForm = session?.GetType().GetProperty("MainForm")?.GetValue(session);
+                var editorControl = mainForm?.GetType().GetProperty("EditorControl")?.GetValue(mainForm);
+                if (editorControl is null) { result["error"] = "EditorControl not available"; done.Set(); return; }
+
+                // CloseCanvas(string filePath, string canvasId)
+                var closeMethod = editorControl.GetType().GetMethod("CloseCanvas",
+                    new[] { typeof(string), typeof(string) });
+
+                if (closeMethod is not null)
+                {
+                    closeMethod.Invoke(editorControl, new object?[] { filePath, canvasId });
+                    result["success"] = true;
+                    result["filePath"] = filePath;
+                }
+                else
+                {
+                    result["success"] = false;
+                    result["error"] = "CloseCanvas(string,string) not found";
+                }
+            }
+            catch (Exception ex) { result["error"] = ex.Message; result["success"] = false; }
+            finally { done.Set(); }
+        });
+
+        done.Wait(TimeSpan.FromSeconds(3));
+        return result;
+    }
+
+    private object HandleUndo(HttpListenerRequest request)
+    {
+        return HandleUndoRedo(request, isUndo: true);
+    }
+
+    private object HandleRedo(HttpListenerRequest request)
+    {
+        return HandleUndoRedo(request, isUndo: false);
+    }
+
+    private object HandleUndoRedo(HttpListenerRequest request, bool isUndo)
+    {
+        var result = new Dictionary<string, object?>();
+        var done = new ManualResetEventSlim(false);
+
+        PostToUIThread(() =>
+        {
+            try
+            {
+                var session = GetSession();
+                if (session is null) { result["error"] = "Session not available"; done.Set(); return; }
+
+                // Get the active canvas from EditorControl
+                var mainForm = session.GetType().GetProperty("MainForm")?.GetValue(session);
+                var editorControl = mainForm?.GetType().GetProperty("EditorControl")?.GetValue(mainForm);
+                var selectedCanvas = editorControl?.GetType().GetProperty("SelectedCanvas")?.GetValue(editorControl);
+
+                if (selectedCanvas is null)
+                {
+                    result["success"] = false;
+                    result["error"] = "No active canvas";
+                    done.Set();
+                    return;
+                }
+
+                var methodName = isUndo ? "Undo" : "Redo";
+                var canMethodName = isUndo ? "CanUndo" : "CanRedo";
+
+                // Check if undo/redo is possible
+                var canMethod = session.GetType().GetMethod(canMethodName,
+                    BindingFlags.Public | BindingFlags.Instance);
+                var canDo = canMethod?.Invoke(session, new[] { selectedCanvas }) as bool? ?? false;
+
+                if (!canDo)
+                {
+                    result["success"] = false;
+                    result["error"] = $"Cannot {methodName} on active canvas";
+                    done.Set();
+                    return;
+                }
+
+                // Perform undo/redo
+                var method = session.GetType().GetMethod(methodName,
+                    BindingFlags.Public | BindingFlags.Instance,
+                    null, new[] { selectedCanvas.GetType() }, null);
+
+                if (method is not null)
+                {
+                    method.Invoke(session, new[] { selectedCanvas });
+                    result["success"] = true;
+                    result["action"] = methodName;
+                }
+                else
+                {
+                    // Try with base Canvas type
+                    var canvasType = selectedCanvas.GetType().BaseType;
+                    while (canvasType is not null)
+                    {
+                        method = session.GetType().GetMethod(methodName,
+                            BindingFlags.Public | BindingFlags.Instance,
+                            null, new[] { canvasType }, null);
+                        if (method is not null) break;
+                        canvasType = canvasType.BaseType;
+                    }
+
+                    if (method is not null)
+                    {
+                        method.Invoke(session, new[] { selectedCanvas });
+                        result["success"] = true;
+                        result["action"] = methodName;
+                    }
+                    else
+                    {
+                        result["success"] = false;
+                        result["error"] = $"{methodName} method not found for canvas type";
+                    }
+                }
+            }
+            catch (Exception ex) { result["error"] = ex.Message; result["success"] = false; }
+            finally { done.Set(); }
+        });
+
+        done.Wait(TimeSpan.FromSeconds(3));
+        return result;
     }
 
     // ── UI Thread MainForm Exploration ─────────────────────────────────────────

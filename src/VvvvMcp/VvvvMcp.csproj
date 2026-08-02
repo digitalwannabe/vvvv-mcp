@@ -11,7 +11,7 @@
     <PackageId>vvvv-mcp</PackageId>
     <Version>0.6.0</Version>
     <Title>vvvv-mcp</Title>
-    <Description>MCP server for vvvv gamma ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â node search (6,400+ nodes), patch reading and explanation, and the full Gray Book knowledge base. Works without a vvvv installation. Run `vvvv-mcp --setup` after install to configure your AI client.</Description>
+    <Description>MCP server for vvvv gamma ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â node search (6,400+ nodes), patch reading and explanation, and the full Gray Book knowledge base. Works without a vvvv installation. Run `vvvv-mcp --setup` after install to configure your AI client.</Description>
     <Authors>digital.wannabe</Authors>
     <PackageTags>vvvv;vvvv-gamma;mcp;modelcontextprotocol;ai;agent;visual-programming</PackageTags>
     <PackageProjectUrl>https://github.com/digitalwannabe/mcp-gamma-server</PackageProjectUrl>

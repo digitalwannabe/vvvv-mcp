@@ -176,6 +176,111 @@ public class BridgeTools
         }, JsonOpts);
     }
 
+    // ── Document Operations ───────────────────────────────────────────────────
+
+    [McpServerTool(Name = "open_document_in_vvvv"), Description(
+        "Open a .vl document in the running vvvv instance. " +
+        "Opens it as a visible tab in the editor. " +
+        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+    public async Task<string> OpenDocumentInVvvv(
+        [Description("Absolute path to the .vl file to open")] string filePath)
+    {
+        if (!await _bridge.CheckAvailabilityAsync())
+            return NoBridgeMessage();
+
+        var result = await _bridge.OpenDocumentAsync(filePath);
+        return JsonSerializer.Serialize(result, JsonOpts);
+    }
+
+    [McpServerTool(Name = "close_document_in_vvvv"), Description(
+        "Close a document in the running vvvv instance. " +
+        "Optionally saves before closing. " +
+        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+    public async Task<string> CloseDocumentInVvvv(
+        [Description("Absolute path to the .vl file to close")] string filePath,
+        [Description("Whether to save before closing")] bool save = false)
+    {
+        if (!await _bridge.CheckAvailabilityAsync())
+            return NoBridgeMessage();
+
+        var result = await _bridge.CloseDocumentAsync(filePath, save);
+        return JsonSerializer.Serialize(result, JsonOpts);
+    }
+
+    [McpServerTool(Name = "save_document_in_vvvv"), Description(
+        "Save a specific document in the running vvvv instance. " +
+        "Use 'all' as filePath to save all open documents. " +
+        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+    public async Task<string> SaveDocumentInVvvv(
+        [Description("Absolute path to the .vl file to save, or 'all' to save everything")] string filePath)
+    {
+        if (!await _bridge.CheckAvailabilityAsync())
+            return NoBridgeMessage();
+
+        var result = filePath.Equals("all", StringComparison.OrdinalIgnoreCase)
+            ? await _bridge.SaveAllAsync()
+            : await _bridge.SaveDocumentAsync(filePath);
+
+        return JsonSerializer.Serialize(result, JsonOpts);
+    }
+
+    // ── Editor / Tabs ─────────────────────────────────────────────────────────
+
+    [McpServerTool(Name = "get_open_tabs"), Description(
+        "Get list of open tabs/patches in the vvvv editor. " +
+        "Shows which canvases are currently open and which one is active. " +
+        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+    public async Task<string> GetOpenTabs()
+    {
+        if (!await _bridge.CheckAvailabilityAsync())
+            return NoBridgeMessage();
+
+        var result = await _bridge.GetTabsAsync();
+        return JsonSerializer.Serialize(result, JsonOpts);
+    }
+
+    [McpServerTool(Name = "undo_in_vvvv"), Description(
+        "Undo the last action on the active canvas in vvvv. " +
+        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+    public async Task<string> UndoInVvvv()
+    {
+        if (!await _bridge.CheckAvailabilityAsync())
+            return NoBridgeMessage();
+
+        var result = await _bridge.UndoAsync();
+        return JsonSerializer.Serialize(result, JsonOpts);
+    }
+
+    [McpServerTool(Name = "redo_in_vvvv"), Description(
+        "Redo the last undone action on the active canvas in vvvv. " +
+        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+    public async Task<string> RedoInVvvv()
+    {
+        if (!await _bridge.CheckAvailabilityAsync())
+            return NoBridgeMessage();
+
+        var result = await _bridge.RedoAsync();
+        return JsonSerializer.Serialize(result, JsonOpts);
+    }
+
+    // ── Log / Console ─────────────────────────────────────────────────────────
+
+    [McpServerTool(Name = "get_vvvv_log"), Description(
+        "Get recent log entries from the vvvv console. " +
+        "Captures Information, Warning, and Error level messages. " +
+        "Use severity filter to narrow results. " +
+        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+    public async Task<string> GetVvvvLog(
+        [Description("Maximum number of entries to return (default 50)")] int limit = 50,
+        [Description("Minimum severity: 'info', 'warning', or 'error'")] string? severity = null)
+    {
+        if (!await _bridge.CheckAvailabilityAsync())
+            return NoBridgeMessage();
+
+        var result = await _bridge.GetLogAsync(limit, severity);
+        return JsonSerializer.Serialize(result, JsonOpts);
+    }
+
     // ── Helper ────────────────────────────────────────────────────────────────
 
     private static string NoBridgeMessage()

@@ -196,6 +196,41 @@ public class BridgeClientService : IDisposable
         return await GetAsync<BridgeLogResponse>(query);
     }
 
+    // ── Tabs / Editor ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Get list of open tabs/patches in the editor.
+    /// </summary>
+    public async Task<BridgeTabsResponse?> GetTabsAsync()
+    {
+        return await GetAsync<BridgeTabsResponse>("/api/tabs");
+    }
+
+    /// <summary>
+    /// Close a specific tab in the editor.
+    /// </summary>
+    public async Task<BridgeOperationResult?> CloseTabAsync(string filePath, string? canvasId = null)
+    {
+        return await PostAsync<BridgeOperationResult>("/api/tabs/close",
+            new { filePath, canvasId });
+    }
+
+    /// <summary>
+    /// Undo last action on the active canvas.
+    /// </summary>
+    public async Task<BridgeOperationResult?> UndoAsync()
+    {
+        return await PostAsync<BridgeOperationResult>("/api/undo", new { });
+    }
+
+    /// <summary>
+    /// Redo last undone action on the active canvas.
+    /// </summary>
+    public async Task<BridgeOperationResult?> RedoAsync()
+    {
+        return await PostAsync<BridgeOperationResult>("/api/redo", new { });
+    }
+
     // ── Internal helpers ──────────────────────────────────────────────────
 
     private async Task<T?> GetAsync<T>(string path) where T : class
@@ -317,4 +352,25 @@ public class BridgeLogEntry
     public string Category { get; set; } = "";
     public string Message { get; set; } = "";
     public string? Exception { get; set; }
+}
+
+public class BridgeTabsResponse
+{
+    public List<BridgeTabInfo> Tabs { get; set; } = new();
+    public int Count { get; set; }
+    public string? ActiveTab { get; set; }
+    public BridgeCanvasInfo? SelectedCanvas { get; set; }
+}
+
+public class BridgeTabInfo
+{
+    public string? Name { get; set; }
+    public string? FilePath { get; set; }
+    public string? Type { get; set; }
+}
+
+public class BridgeCanvasInfo
+{
+    public string? Name { get; set; }
+    public string? Id { get; set; }
 }
