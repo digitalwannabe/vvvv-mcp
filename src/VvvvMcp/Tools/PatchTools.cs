@@ -10,6 +10,14 @@ public class PatchTools
     private readonly PatchReaderService _patchReader;
     private readonly PatchExplainerService _explainer;
 
+    // Shown in every read_patch / explain_patch result so the model has the patterns
+    // reminder whether it arrived here via a prompt or a direct "edit this patch" request.
+    private const string EditContextHint =
+        "If you are about to edit this patch: read resource vvvv://knowledge/patterns " +
+        "(skip if already in context this session). It has correct XML for all common " +
+        "patterns — document skeleton, If/ForEach regions, IOBoxes, Channel, Stride, " +
+        "SDSL shaders. One read per session is enough.";
+
     public PatchTools(PatchReaderService patchReader, PatchExplainerService explainer)
     {
         _patchReader = patchReader;
@@ -67,7 +75,8 @@ public class PatchTools
                     padCount = patch.AllPads.Count,
                     linkCount = patch.Links.Count,
                     dependencyCount = patch.Dependencies.Count
-                }
+                },
+                _edit_context = EditContextHint
             };
         }
         catch (FileNotFoundException)
@@ -89,7 +98,11 @@ public class PatchTools
         {
             var patch = _patchReader.ReadPatch(filePath);
             var explanation = _explainer.ExplainPatch(patch, filePath);
-            return new { explanation };
+            return new
+            {
+                explanation,
+                _edit_context = EditContextHint
+            };
         }
         catch (FileNotFoundException)
         {

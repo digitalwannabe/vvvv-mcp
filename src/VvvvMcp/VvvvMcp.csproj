@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
@@ -9,7 +9,7 @@
     <ToolCommandName>vvvv-mcp</ToolCommandName>
     <!-- NuGet package metadata -->
     <PackageId>vvvv-mcp</PackageId>
-    <Version>0.9.0</Version>
+    <Version>0.9.1</Version>
     <Title>vvvv-mcp</Title>
     <Description>MCP server for vvvv gamma — the live .NET visual programming environment. Provides AI agents with node search (6400+ nodes), patch reading and explanation, patch writing (create/add/connect nodes), C# plugin and SDSL shader generation, template access, SQLite FTS5 knowledge search, practical knowledge from help patches and forum solutions, and live bridge to a running vvvv instance.</Description>
     <Authors>digital.wannabe</Authors>

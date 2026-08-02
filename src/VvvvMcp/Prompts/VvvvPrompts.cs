@@ -31,6 +31,44 @@ public class VvvvPrompts
 
     // ── Prompts ───────────────────────────────────────────────────────────────
 
+    [McpServerPrompt(Name = "edit_vl_patch")]
+    [Description("Get guidance for editing or extending an existing vvvv gamma .vl patch.")]
+    public string EditVlPatch(
+        [Description("Absolute path to the .vl patch file to edit")] string filePath,
+        [Description("What to add, change, or remove in the patch")] string task)
+    {
+        return
+            $"Edit the vvvv gamma patch at:\n{filePath}\n\nTask: {task}\n\n" +
+            PatternsInstruction + "\n\n" +
+            $"""
+## Edit workflow
+
+1. **Read the patch first**: call `read_patch("{filePath}")` to understand the
+   current node IDs, pin IDs, existing connections, and language version.
+   All new links must reference IDs that exist in the patch.
+
+2. **Use the patterns resource** (step 0 above) — especially:
+   - Node reference XML (OperationCallFlag vs ProcessAppFlag)
+   - IOBox/Pad format for any new value editors
+   - Region XML if adding If/ForEach/Cache
+   - Stride/Skia/SDSL patterns if extending those systems
+
+3. **Find exact node details**: call `search_nodes("NodeName")` then
+   `get_node_details("NodeName")` to confirm category, dependency, pin names.
+
+4. **Preserve existing structure**: do NOT change existing node/pad IDs.
+   Only add new elements with fresh IDs, or modify DefaultValue/Value
+   attributes on existing elements. Removing nodes also removes their links.
+
+5. **Position new elements**: check the Bounds of existing nodes in the patch,
+   then place new nodes below/beside them with 40–60 px vertical spacing.
+   Match the languageVersion from the patch for any new NugetDependency.
+
+6. **After editing**: if the bridge is running call `get_vvvv_errors` to check
+   for compilation errors; call `reload_file_in_vvvv("{filePath}")` if needed.
+""";
+    }
+
     [McpServerPrompt(Name = "create_vl_patch")]
     [Description("Get guidance for creating a new vvvv gamma .vl patch from scratch.")]
     public string CreateVlPatch(
