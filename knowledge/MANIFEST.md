@@ -2,7 +2,7 @@
 
 # vvvv-mcp Knowledge Base Manifest
 
-Generated: 2026-07-31 23:53:23
+Generated: 2026-08-02 19:31:37
 
 ## Sources
 
@@ -12,7 +12,7 @@ Generated: 2026-07-31 23:53:23
 | tebjan-vvvv-skills | knowledge/tebjan-vvvv-skills | unknown |
 | Libraries.xml | vvvv/PublicContent on GitHub | fetched live |
 
-## Generated Files (22)
+## Generated Files (23)
 
 - `gray-book-language.md`
 - `gray-book-extending.md`
@@ -36,10 +36,11 @@ Generated: 2026-07-31 23:53:23
 - `vvvv-testing.md`
 - `vvvv-troubleshooting.md`
 - `vvvv-packages.md`
+- `vl-templates.md`
 
 ## Manually Maintained (NOT overwritten by script)
 
-- `vvvv-concepts.md`
+- `vl-quickref.md`
 
 ## Update Procedure
 

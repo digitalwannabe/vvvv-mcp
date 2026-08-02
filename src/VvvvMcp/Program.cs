@@ -46,9 +46,11 @@ builder.Services.AddSingleton<NodeCatalogService>();
 builder.Services.AddSingleton<PatchReaderService>();
 builder.Services.AddSingleton<PatchExplainerService>();
 builder.Services.AddSingleton<PatchWriterService>();
+builder.Services.AddSingleton<TemplateService>();
 builder.Services.AddSingleton<PluginGeneratorService>();
 builder.Services.AddSingleton<ShaderGeneratorService>();
 builder.Services.AddSingleton<KnowledgeService>();
+builder.Services.AddSingleton<SearchIndexService>();
 builder.Services.AddSingleton<BridgeClientService>();
 
 builder.Services
@@ -67,9 +69,11 @@ builder.Services
 
 var host = builder.Build();
 
-var catalogService  = host.Services.GetRequiredService<NodeCatalogService>();
+var catalogService   = host.Services.GetRequiredService<NodeCatalogService>();
 var knowledgeService = host.Services.GetRequiredService<KnowledgeService>();
-var logger          = host.Services.GetRequiredService<ILogger<Program>>();
+var templateService  = host.Services.GetRequiredService<TemplateService>();
+var searchIndex      = host.Services.GetRequiredService<SearchIndexService>();
+var logger           = host.Services.GetRequiredService<ILogger<Program>>();
 
 // --- Node catalog ---
 // Priority: bundled alongside binary → repo dev layout
@@ -98,7 +102,7 @@ else
     logger.LogWarning("Node catalog not found. Run `vvvv-mcp --setup`. Node search will be unavailable.");
 }
 
-// --- Knowledge base ---
+// --- Knowledge base + templates ---
 // Priority: knowledge/ bundled alongside binary → repo dev layout
 var knowledgeCandidates = new[]
 {
@@ -120,23 +124,68 @@ if (knowledgePath is not null)
     {
         logger.LogWarning(ex, "Failed to load knowledge base from {Path}.", knowledgePath);
     }
+
+    try
+    {
+        await templateService.LoadAsync(knowledgePath);
+        logger.LogInformation("Templates loaded ({Count} files)", templateService.ListTemplates().Count);
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Failed to load templates from {Path}/templates.", knowledgePath);
+    }
 }
 else
 {
     logger.LogWarning("Knowledge base not found. Run `vvvv-mcp --setup`.");
 }
 
+// --- SQLite FTS5 search index ---
+// Covers knowledge docs, node catalog, and practical data (help patches, forum).
+// The DB lives next to the knowledge/ dir so it is always co-located with its sources.
+// It is gitignored and fully regenerated at every startup (sub-second for existing data).
+if (knowledgePath is not null)
+{
+    try
+    {
+        var dbPath = Path.Combine(knowledgePath, "vvvv-search.db");
+        await searchIndex.InitializeAsync(dbPath);
+
+        // Index knowledge files
+        if (knowledgeService.IsLoaded)
+        {
+            await searchIndex.RebuildKnowledgeIndexAsync(knowledgeService.GetAllFiles());
+            knowledgeService.SetSearchIndex(searchIndex);
+        }
+
+        // Index node catalog
+        if (catalogService.IsLoaded)
+        {
+            await searchIndex.RebuildNodeIndexAsync(catalogService.GetAllNodes());
+            catalogService.SetSearchIndex(searchIndex);
+        }
+
+        // Index practical data (help patches, forum, etc.) from generated JSON/MD files
+        await searchIndex.RebuildPracticalIndexAsync(knowledgePath);
+
+        var (kCount, nCount, pCount) = searchIndex.GetStats();
+        logger.LogInformation(
+            "Search index ready — knowledge: {K}, nodes: {N}, practical: {P}",
+            kCount, nCount, pCount);
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Failed to initialize search index. Falling back to in-memory search.");
+    }
+}
+
 // --- Bridge client (connects to running vvvv if VL.MCP.Bridge is loaded) ---
-var bridgeClient = host.Services.GetRequiredService<BridgeClientService>();
+var bridgeClient    = host.Services.GetRequiredService<BridgeClientService>();
 var bridgeAvailable = await bridgeClient.CheckAvailabilityAsync();
 if (bridgeAvailable)
-{
     logger.LogInformation("vvvv bridge detected at localhost (live tools enabled)");
-}
 else
-{
     logger.LogInformation("No vvvv bridge detected (live tools will report 'not connected' until VL.MCP.Bridge.HDE.vl is loaded in vvvv)");
-}
 
 await host.RunAsync();
 
@@ -159,6 +208,9 @@ static void PrintHelp()
         Update catalog (downloads all vvvv packages from NuGet, no vvvv install needed):
           ./scripts/update-catalog.ps1
 
+        Rebuild search index (after running index-help-patches.ps1 / scrape-forum.ps1):
+          Just restart the MCP server — it rebuilds vvvv-search.db on every startup.
+
         Docs: https://github.com/digitalwannabe/mcp-gamma-server
         """);
 }
@@ -167,24 +219,19 @@ static string GetAppVersion()
 {
     var assembly = typeof(Program).Assembly;
 
-    // Prefer informational version and strip build metadata suffix.
     var informational = assembly
         .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
         ?.InformationalVersion;
 
     if (!string.IsNullOrWhiteSpace(informational))
-    {
         return informational.Split('+')[0];
-    }
 
     var fileVersion = assembly
         .GetCustomAttribute<AssemblyFileVersionAttribute>()
         ?.Version;
 
     if (Version.TryParse(fileVersion, out var parsed) && parsed.Revision == 0)
-    {
         return $"{parsed.Major}.{parsed.Minor}.{parsed.Build}";
-    }
 
     return fileVersion ?? "0.0.0";
 }

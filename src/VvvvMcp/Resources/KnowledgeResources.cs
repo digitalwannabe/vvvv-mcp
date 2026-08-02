@@ -108,6 +108,27 @@ public class KnowledgeResources
     [Description("Automated testing: VL.TestFramework with NUnit, test patches, assertion nodes, CI integration.")]
     public string GetTesting() => Get("vvvv-testing");
 
+    [McpServerResource(Name = "vvvv Patching Patterns (always-applicable)", UriTemplate = "vvvv://knowledge/patterns")]
+    [Description("""
+        Ground-truth, immediately-applicable XML patterns for creating .vl patches. Contains:
+          - Complete document skeleton (correct Document/Patch/Canvas/Application/ProcessDefinition structure)
+          - All IOBox variants (Float32, Boolean bang/toggle, String comment, Vector3, RGBA, Spread<T>)
+          - If region XML with ControlPoint splicers
+          - ForEach region XML with ControlPoint splicers (Create/Update/Dispose)
+          - Switch, S+H, Changed, LFO nodes
+          - Channel / SetValue / Value / EnsureValue / Consume (Observable) patterns
+          - Collections: AddRange, InsertSlice, Map
+          - Full Stride 3D scene: SceneWindow, RootScene, Sphere, DirectionalLight, SkyboxLight, OrbitCamera
+          - Stride Group / Group(Spectral) / TransformSRT / SkiaRenderer
+          - Skia Renderer window node
+          - SDSL: FilterBase, MixerBase, TextureFX Source, ComputeFX, DrawFX
+          - Layout conventions from VL.StandardLibs analysis
+        
+        Read this BEFORE creating or editing any .vl patch — it eliminates the most common mistakes
+        and removes the need to look up basic structure every session.
+        """)]
+    public string GetPatterns() => Get("vl-patterns");
+
     // -- Private helpers -------------------------------------------------------
 
     private string Get(string name)

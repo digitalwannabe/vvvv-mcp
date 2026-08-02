@@ -15,6 +15,7 @@ public record AddPadResult(
 public class PatchWriterService
 {
     private readonly ILogger<PatchWriterService> _logger;
+    private readonly TemplateService? _templateService;
     private static readonly XNamespace PropNs = "property";
     
     // Track position for auto-layout
@@ -22,20 +23,33 @@ public class PatchWriterService
     private const int NodeSpacingY = 60;
     private const int DefaultX = 400;
 
-    public PatchWriterService(ILogger<PatchWriterService> logger)
+    // Default version read from the empty_new_patch.vl template when available.
+    // Hardcoded fallback matches what the template currently contains.
+    private const string DefaultLanguageVersion = "2025.7.1-0156-gdf75a792b5";
+    private const string DefaultDocVersion      = "0.128";
+
+    public PatchWriterService(ILogger<PatchWriterService> logger, TemplateService? templateService = null)
     {
-        _logger = logger;
+        _logger          = logger;
+        _templateService = templateService;
     }
 
     /// <summary>
     /// Creates a new VL document with the standard Application process.
+    /// If a TemplateService is available, the language version is read from
+    /// the empty_new_patch.vl template to stay in sync with the vvvv version
+    /// that produced the template.
     /// </summary>
     public XDocument CreateDocument(
         string category = "Main",
-        string languageVersion = "2025.7.0",
+        string? languageVersion = null,
         List<string>? dependencies = null)
     {
-        dependencies ??= new List<string> { "VL.CoreLib" };
+        // Resolve language version: template → explicit parameter → hardcoded default
+        if (languageVersion is null)
+            languageVersion = ReadTemplateLanguageVersion() ?? DefaultLanguageVersion;
+
+        dependencies ??= ["VL.CoreLib"];
         
         var createPatchId = VlIdGenerator.NewId();
         var updatePatchId = VlIdGenerator.NewId();
@@ -445,5 +459,26 @@ public class PatchWriterService
             ?? throw new InvalidOperationException("No inner Patch found in Application node");
 
         return innerPatch;
+    }
+
+    /// <summary>
+    /// Reads the LanguageVersion attribute from the empty_new_patch.vl template
+    /// so created documents stay in sync with the vvvv version used to author templates.
+    /// Returns null if the template is not loaded.
+    /// </summary>
+    private string? ReadTemplateLanguageVersion()
+    {
+        try
+        {
+            var tmpl = _templateService?.GetEmptyPatchTemplate();
+            if (tmpl is null) return null;
+
+            var doc  = XDocument.Parse(tmpl.Content);
+            return doc.Root?.Attribute("LanguageVersion")?.Value;
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

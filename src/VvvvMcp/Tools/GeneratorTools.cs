@@ -62,21 +62,41 @@ public class GeneratorTools
     }
 
     [McpServerTool(Name = "create_shader")]
-    [Description("Generate a Stride SDSL shader file for vvvv gamma.")]
+    [Description("""
+        Generate a Stride SDSL shader file for vvvv gamma.
+        
+        Shader types:
+          texturefx / filter  – FilterBase: per-pixel texture filter (most common)
+          texturefx / mixer   – MixerBase: blend two input textures
+          texturefx / source  – TextureFX (no input): generates pixels procedurally
+          compute / computefx – ComputeShaderBase: GPU compute dispatch
+          draw / drawfx       – VS_PS_Base: vertex + pixel shader pair
+          shaderfx            – ComputeFloat4: material compositor node
+        
+        Generated files use templates from knowledge/templates/sdsl/shaders/ when available,
+        which ensures correct base class names, stream variables, and attribute syntax.
+        Use get_template to inspect the template before generating.
+        """)]
     public object CreateShader(
         [Description("Shader name (e.g. 'Blur', 'ColorGrade')")] string name,
         [Description("Output directory (shader goes in 'shaders' subdirectory)")] string outputDirectory,
-        [Description("Type: 'texturefx', 'compute', or 'shaderfx'")] string shaderType = "texturefx",
+        [Description("Type: 'texturefx' (filter/mixer/source), 'compute', 'draw', or 'shaderfx'")] string shaderType = "texturefx",
+        [Description("For texturefx: sub-variant 'filter' (default), 'mixer', or 'source'")] string variant = "filter",
         [Description("Optional description")] string? description = null)
     {
         try
         {
             GeneratedShader shader = shaderType.ToLowerInvariant() switch
             {
-                "texturefx" or "texture" or "filter" => _shaderGen.GenerateTextureFX(name, outputDirectory, description),
-                "compute" or "computefx" => _shaderGen.GenerateComputeShader(name, outputDirectory, description),
-                "shaderfx" or "shader" => _shaderGen.GenerateShaderFX(name, outputDirectory, description),
-                _ => throw new ArgumentException($"Unknown shader type '{shaderType}'.")
+                "texturefx" or "texture" or "filter" =>
+                    _shaderGen.GenerateTextureFX(name, outputDirectory, description, variant),
+                "compute" or "computefx" =>
+                    _shaderGen.GenerateComputeShader(name, outputDirectory, description),
+                "draw" or "drawfx" =>
+                    _shaderGen.GenerateDrawFX(name, outputDirectory, description),
+                "shaderfx" or "shader" =>
+                    _shaderGen.GenerateShaderFX(name, outputDirectory, description),
+                _ => throw new ArgumentException($"Unknown shader type '{shaderType}'. Use: texturefx, compute, draw, shaderfx")
             };
 
             _shaderGen.SaveShader(shader);
@@ -85,6 +105,7 @@ public class GeneratorTools
             {
                 success = true,
                 shaderType,
+                variant,
                 filePath = shader.FilePath,
                 content = shader.Content,
                 message = $"Shader '{name}' created at {shader.FilePath}."
@@ -99,7 +120,7 @@ public class GeneratorTools
     private static List<(string Name, string Type)> ParseTypedParams(string paramStr)
     {
         if (string.IsNullOrWhiteSpace(paramStr))
-            return new List<(string, string)>();
+            return [];
 
         return paramStr.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(p =>

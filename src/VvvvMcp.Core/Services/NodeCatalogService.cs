@@ -10,6 +10,7 @@ public class NodeCatalogService
 {
     private readonly ILogger<NodeCatalogService> _logger;
     private NodeCatalog? _catalog;
+    private SearchIndexService? _searchIndex;
     private readonly Dictionary<string, List<VvvvNode>> _categoryIndex = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<VvvvNode>> _packageIndex = new(StringComparer.OrdinalIgnoreCase);
     // Key: FullName (category.name), value: list because different packages may share a full name
@@ -19,6 +20,9 @@ public class NodeCatalogService
     {
         _logger = logger;
     }
+
+    /// <summary>Wire in the FTS5 search index after it has been initialized.</summary>
+    public void SetSearchIndex(SearchIndexService index) => _searchIndex = index;
 
     public async Task LoadAsync(string catalogPath, CancellationToken ct = default)
     {
@@ -90,30 +94,58 @@ public class NodeCatalogService
 
     public bool IsLoaded => _catalog is not null;
 
+    /// <summary>All nodes in the catalog — used by SearchIndexService for bulk indexing.</summary>
+    public IReadOnlyList<VvvvNode> GetAllNodes() => _catalog?.Nodes ?? [];
+
     public List<NodeSearchResult> Search(string query, string? category = null, int limit = 25)
     {
         EnsureLoaded();
 
-        var results = new List<NodeSearchResult>();
+        // Use FTS5 when available — returns (FullName, Package, Score) hits
+        if (_searchIndex?.IsReady == true)
+        {
+            var hits    = _searchIndex.SearchNodeHits(query, category, limit);
+            var results = new List<NodeSearchResult>(hits.Count);
+            foreach (var (fullName, pkg, score) in hits)
+            {
+                // Look up the full node object from the in-memory index
+                if (_fullNameIndex.TryGetValue(fullName, out var candidates))
+                {
+                    var node = candidates.Count == 1
+                        ? candidates[0]
+                        : candidates.FirstOrDefault(n =>
+                            n.Package.Equals(pkg, StringComparison.OrdinalIgnoreCase))
+                          ?? candidates[0];
+                    results.Add(new NodeSearchResult(node, score));
+                }
+            }
+            return results.OrderByDescending(r => r.Score).ToList();
+        }
+
+        // Fallback: in-memory relevance scoring
+        return SearchInMemory(query, category, limit);
+    }
+
+    private List<NodeSearchResult> SearchInMemory(string query, string? category, int limit)
+    {
         var queryLower = query.ToLowerInvariant();
         var queryTerms = queryLower.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var results    = new List<NodeSearchResult>();
 
         IEnumerable<VvvvNode> searchSpace = _catalog!.Nodes;
 
         if (!string.IsNullOrEmpty(category))
         {
             searchSpace = searchSpace.Where(n =>
-                TryNormalizeCategory(n.Category, out var normalizedCategory) &&
-                normalizedCategory.Contains(category, StringComparison.OrdinalIgnoreCase));
+                TryNormalizeCategory(n.Category, out var nc) &&
+                nc.Contains(category, StringComparison.OrdinalIgnoreCase));
         }
 
         foreach (var node in searchSpace)
         {
             double score = CalculateRelevance(node, queryLower, queryTerms);
             if (score > 0)
-            {
                 results.Add(new NodeSearchResult(node, score));
-            }
         }
 
         return results
