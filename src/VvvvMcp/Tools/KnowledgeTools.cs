@@ -19,7 +19,7 @@ public class KnowledgeTools
     public object ListKnowledge()
     {
         if (!_knowledge.IsLoaded)
-            return new { error = "Knowledge base not loaded.", note = "Set VVVV_MCP_KNOWLEDGE environment variable." };
+            return new { error = "Knowledge base not loaded." };
 
         var files = _knowledge.ListFiles();
         return new

@@ -72,18 +72,14 @@ var knowledgeService = host.Services.GetRequiredService<KnowledgeService>();
 var logger          = host.Services.GetRequiredService<ILogger<Program>>();
 
 // --- Node catalog ---
-// Priority: VVVV_MCP_CATALOG env var → bundled alongside binary → repo dev layout
-var catalogPath = Environment.GetEnvironmentVariable("VVVV_MCP_CATALOG");
-if (catalogPath is null || !File.Exists(catalogPath))
+// Priority: bundled alongside binary → repo dev layout
+var catalogCandidates = new[]
 {
-    var candidates = new[]
-    {
-        Path.Combine(AppContext.BaseDirectory, "vvvv_nodes_mcp.json"),
-        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-            "..", "..", "..", "..", "VVVVNodeAnalyzer", "output", "vvvv_nodes_mcp.json")),
-    };
-    catalogPath = candidates.FirstOrDefault(File.Exists);
-}
+    Path.Combine(AppContext.BaseDirectory, "vvvv_nodes_mcp.json"),
+    Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+        "..", "..", "..", "..", "VVVVNodeAnalyzer", "output", "vvvv_nodes_mcp.json")),
+};
+var catalogPath = catalogCandidates.FirstOrDefault(File.Exists);
 
 if (catalogPath is not null)
 {
@@ -99,23 +95,19 @@ if (catalogPath is not null)
 }
 else
 {
-    logger.LogWarning("Node catalog not found. Run `vvvv-mcp --setup` or set VVVV_MCP_CATALOG. Node search will be unavailable.");
+    logger.LogWarning("Node catalog not found. Run `vvvv-mcp --setup`. Node search will be unavailable.");
 }
 
 // --- Knowledge base ---
-// Priority: VVVV_MCP_KNOWLEDGE env var → knowledge/ bundled alongside binary → repo dev layout
-var knowledgePath = Environment.GetEnvironmentVariable("VVVV_MCP_KNOWLEDGE");
-if (knowledgePath is null || !Directory.Exists(knowledgePath))
+// Priority: knowledge/ bundled alongside binary → repo dev layout
+var knowledgeCandidates = new[]
 {
-    var candidates = new[]
-    {
-        Path.Combine(AppContext.BaseDirectory, "knowledge"),
-        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-            "..", "..", "..", "..", "knowledge")),
-    };
-    knowledgePath = candidates.FirstOrDefault(d =>
-        Directory.Exists(d) && Directory.GetFiles(d, "*.md").Length > 0);
-}
+    Path.Combine(AppContext.BaseDirectory, "knowledge"),
+    Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+        "..", "..", "..", "..", "knowledge")),
+};
+var knowledgePath = knowledgeCandidates.FirstOrDefault(d =>
+    Directory.Exists(d) && Directory.GetFiles(d, "*.md").Length > 0);
 
 if (knowledgePath is not null)
 {
@@ -131,7 +123,7 @@ if (knowledgePath is not null)
 }
 else
 {
-    logger.LogWarning("Knowledge base not found. Run `vvvv-mcp --setup` or set VVVV_MCP_KNOWLEDGE.");
+    logger.LogWarning("Knowledge base not found. Run `vvvv-mcp --setup`.");
 }
 
 // --- Bridge client (connects to running vvvv if VL.MCP.Bridge is loaded) ---
@@ -160,10 +152,6 @@ static void PrintHelp()
           vvvv-mcp --setup       Configure MCP clients (Claude Desktop, Cursor, VS Code)
           vvvv-mcp --version     Print version
           vvvv-mcp --help        Show this help
-
-        Environment variables:
-          VVVV_MCP_CATALOG       Path to vvvv_nodes_mcp.json (auto-detected if not set)
-          VVVV_MCP_KNOWLEDGE     Path to knowledge/ directory (auto-detected if not set)
 
         Install (requires .NET 8 SDK):
           dotnet tool install -g vvvv-mcp

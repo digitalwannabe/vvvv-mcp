@@ -22,7 +22,7 @@ public class NodeCatalogTools
         [Description("Maximum results to return (default 25, max 100)")] int limit = 25)
     {
         if (!_catalog.IsLoaded)
-            return new { error = "Node catalog not loaded. Set VVVV_MCP_CATALOG environment variable." };
+            return new { error = "Node catalog not loaded." };
 
         limit = Math.Clamp(limit, 1, 100);
         var results = _catalog.Search(query, category, limit);

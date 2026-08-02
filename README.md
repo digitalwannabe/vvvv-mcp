@@ -133,12 +133,7 @@ dotnet build src/VvvvMcp.sln
 dotnet run --project src/VvvvMcp -- --setup   # configure MCP clients to use this build
 ```
 
-**Environment variables** (auto-detected when using `--setup`, or set manually):
-
-| Variable | Description |
-|---|---|
-| `VVVV_MCP_CATALOG` | Path to `vvvv_nodes_mcp.json`. Auto-detected when not set. |
-| `VVVV_MCP_KNOWLEDGE` | Path to the `knowledge/` directory. Auto-detected when not set. |
+No environment variables are required. Catalog and knowledge files are discovered automatically from the bundled tool files (and repo layout when running from source).
 
 ### Test with MCP Inspector
 
@@ -149,7 +144,7 @@ npx @modelcontextprotocol/inspector -- dotnet src/VvvvMcp/bin/Debug/net8.0/VvvvM
 ### Publish a new version
 
 ```powershell
-# 1. Test the package locally (optional)
+# 1. Test the package locally
 ./scripts/publish.ps1 -Version 0.8.0
 
 # 2. Commit, tag, push — GitHub Actions publishes to NuGet.org automatically

@@ -24,18 +24,6 @@ public static class SetupCommand
         Console.WriteLine($"Knowledge: {knowledgePath ?? "(not found)"}");
         Console.WriteLine();
 
-        // Build the environment variables block.
-        // When running as an installed global tool, the catalog and knowledge paths
-        // are auto-detected at runtime from AppContext.BaseDirectory, so we must NOT
-        // bake version-specific paths into MCP client configs — they would become
-        // stale after every `dotnet tool update`.
-        var env = new Dictionary<string, string>();
-        if (!IsInstalledAsTool())
-        {
-            if (catalogPath  is not null) env["VVVV_MCP_CATALOG"]   = catalogPath;
-            if (knowledgePath is not null) env["VVVV_MCP_KNOWLEDGE"] = knowledgePath;
-        }
-
         var configured = new List<string>();
 
         // ── Claude Desktop ──────────────────────────────────────────────────
@@ -45,7 +33,7 @@ public static class SetupCommand
         if (Directory.Exists(claudeDir))
         {
             var configPath = Path.Combine(claudeDir, "claude_desktop_config.json");
-            if (TryConfigureClient(configPath, "mcpServers", serverExe, env, isDotnetTool: true))
+            if (TryConfigureClient(configPath, "mcpServers", serverExe, isDotnetTool: true))
             {
                 configured.Add("Claude Desktop");
                 Console.WriteLine($"  [OK] Claude Desktop   -> {configPath}");
@@ -59,7 +47,7 @@ public static class SetupCommand
         if (Directory.Exists(cursorDir))
         {
             var configPath = Path.Combine(cursorDir, "mcp.json");
-            if (TryConfigureClient(configPath, "mcpServers", serverExe, env, isDotnetTool: true))
+            if (TryConfigureClient(configPath, "mcpServers", serverExe, isDotnetTool: true))
             {
                 configured.Add("Cursor (global)");
                 Console.WriteLine($"  [OK] Cursor (global)  -> {configPath}");
@@ -71,7 +59,7 @@ public static class SetupCommand
         var vsCodeSettingsPath = GetVsCodeUserSettingsPath();
         if (vsCodeSettingsPath is not null && File.Exists(vsCodeSettingsPath))
         {
-            if (TryConfigureClient(vsCodeSettingsPath, "mcp.servers", serverExe, env, isDotnetTool: true))
+            if (TryConfigureClient(vsCodeSettingsPath, "mcp.servers", serverExe, isDotnetTool: true))
             {
                 configured.Add("VS Code (global)");
                 Console.WriteLine($"  [OK] VS Code (global) -> {vsCodeSettingsPath}");
@@ -89,7 +77,7 @@ public static class SetupCommand
         // ── Manual config snippet for everything else ───────────────────────
         Console.WriteLine("Add the following to any other MCP client config:");
         Console.WriteLine();
-        PrintConfigSnippets(serverExe, env);
+        PrintConfigSnippets(serverExe);
 
         Console.WriteLine();
         Console.WriteLine("Restart your MCP client to pick up the new configuration.");
@@ -156,7 +144,7 @@ public static class SetupCommand
     /// </summary>
     private static bool TryConfigureClient(
         string configPath, string serversKey,
-        string serverExe, Dictionary<string, string> env,
+        string serverExe,
         bool isDotnetTool)
     {
         try
@@ -187,7 +175,7 @@ public static class SetupCommand
             var servers = (JsonObject)parent[key]!;
 
             // Build the server entry
-            var entry = BuildServerEntry(serverExe, env, isDotnetTool);
+            var entry = BuildServerEntry(serverExe, isDotnetTool);
             servers["vvvv"] = entry;
 
             var options = new JsonSerializerOptions { WriteIndented = true };
@@ -203,20 +191,15 @@ public static class SetupCommand
     }
 
     private static JsonObject BuildServerEntry(
-        string serverExe, Dictionary<string, string> env, bool isDotnetTool)
+        string serverExe, bool isDotnetTool)
     {
-        var envNode = new JsonObject();
-        foreach (var kv in env)
-            envNode[kv.Key] = kv.Value;
-
         if (isDotnetTool && serverExe == "vvvv-mcp")
         {
             // dotnet global tool — clients call it by command name
             return new JsonObject
             {
                 ["type"]    = "stdio",
-                ["command"] = "vvvv-mcp",
-                ["env"]     = envNode
+                ["command"] = "vvvv-mcp"
             };
         }
         else
@@ -226,8 +209,7 @@ public static class SetupCommand
             {
                 ["type"]    = "stdio",
                 ["command"] = "dotnet",
-                ["args"]    = new JsonArray(serverExe),
-                ["env"]     = envNode
+                ["args"]    = new JsonArray(serverExe)
             };
         }
     }
@@ -258,11 +240,8 @@ public static class SetupCommand
 
     // ── Printed snippets ─────────────────────────────────────────────────────
 
-    private static void PrintConfigSnippets(string serverExe, Dictionary<string, string> env)
+    private static void PrintConfigSnippets(string serverExe)
     {
-        var envJson = string.Join(",\n", env.Select(kv =>
-            $"        \"{kv.Key}\": \"{kv.Value.Replace("\\", "\\\\")}\""));
-
         string cmdLines;
         if (serverExe == "vvvv-mcp")
         {
@@ -274,15 +253,12 @@ public static class SetupCommand
             cmdLines = "      \"command\": \"dotnet\",\n      \"args\": [\"" + escaped + "\"]";
         }
 
-        static string McpBlock(string serverKey, string cmdLines, string envJson) =>
+        static string McpBlock(string serverKey, string cmdLines) =>
             "{\n" +
             "  \"" + serverKey + "\": {\n" +
             "    \"vvvv\": {\n" +
             "      \"type\": \"stdio\",\n" +
-            cmdLines + ",\n" +
-            "      \"env\": {\n" +
-            envJson + "\n" +
-            "      }\n" +
+            cmdLines + "\n" +
             "    }\n" +
             "  }\n" +
             "}";
@@ -290,10 +266,10 @@ public static class SetupCommand
         Console.WriteLine("  Claude Desktop  (%APPDATA%\\Claude\\claude_desktop_config.json)");
         Console.WriteLine("  Cursor          (~/.cursor/mcp.json)");
         Console.WriteLine();
-        Console.WriteLine(McpBlock("mcpServers", cmdLines, envJson));
+        Console.WriteLine(McpBlock("mcpServers", cmdLines));
         Console.WriteLine();
         Console.WriteLine("  VS Code / Kilo  (.vscode/mcp.json  or  user settings.json)");
         Console.WriteLine();
-        Console.WriteLine(McpBlock("servers", cmdLines, envJson));
+        Console.WriteLine(McpBlock("servers", cmdLines));
     }
 }

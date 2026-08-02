@@ -113,7 +113,7 @@ public class KnowledgeResources
     private string Get(string name)
     {
         if (!_knowledge.IsLoaded)
-            return $"Knowledge base not loaded. Set VVVV_MCP_KNOWLEDGE environment variable.";
+            return "Knowledge base not loaded.";
         return _knowledge.GetFile(name)?.Content
             ?? $"Knowledge document '{name}' not found.";
     }

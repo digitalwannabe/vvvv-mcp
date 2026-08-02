@@ -3,11 +3,7 @@
   "mcp": {
     "vvvv": {
       "type": "local",
-      "command": ["vvvv-mcp"],
-      "environment": {
-        "VVVV_MCP_CATALOG": "C:\\Users\\lichter loh\\.dotnet\\tools\\.store\\vvvv-mcp\\0.6.0\\vvvv-mcp\\0.6.0\\tools\\net8.0\\any\\vvvv_nodes_mcp.json",
-        "VVVV_MCP_KNOWLEDGE": "C:\\Users\\lichter loh\\.dotnet\\tools\\.store\\vvvv-mcp\\0.6.0\\vvvv-mcp\\0.6.0\\tools\\net8.0\\any\\knowledge"
-      }
+      "command": ["vvvv-mcp"]
     }
   }
 }
