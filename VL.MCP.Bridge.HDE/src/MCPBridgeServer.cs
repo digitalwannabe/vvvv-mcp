@@ -168,6 +168,9 @@ public class MCPBridgeServer
                 // ── Navigation ──
                 ("POST", "/api/navigate") => HandleNavigate(request),
 
+                // ── UI Thread exploration ──
+                ("GET", "/api/debug/mainform") => HandleMainFormExplore(),
+
                 // ── Debug ──
                 ("GET", "/api/debug") => HandleDebug(),
                 ("GET", "/api/debug/explore") => HandleExplore(request),
@@ -215,9 +218,6 @@ public class MCPBridgeServer
             if (session is null)
                 return new { success = false, error = "Session not available" };
 
-            var addRootMethod = session.GetType().GetMethod("AddAsRootDocument",
-                BindingFlags.Public | BindingFlags.Instance);
-
             // Check if document is already in solution
             var solution = session.GetType().GetProperty("CurrentSolution")?.GetValue(session);
             var docsEnum = solution?.GetType().GetProperty("Documents")?.GetValue(solution) as IEnumerable;
@@ -235,44 +235,99 @@ public class MCPBridgeServer
                 }
             }
 
-            if (existingDoc is not null && addRootMethod is not null)
+            if (existingDoc is not null)
             {
-                // Document already in solution - try shell execute to trigger vvvv's 
-                // file association handler (single-instance forwards to running instance)
-                try
-                {
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(filePath!)
-                    {
-                        UseShellExecute = true
-                    });
-                    return new { success = true, filePath, method = "ShellExecute (already in solution)" };
-                }
-                catch
-                {
-                    // Fallback to AddAsRootDocument
-                    PostToUIThread(() => addRootMethod.Invoke(session, new[] { existingDoc }));
-                    return new { success = true, filePath, method = "AddAsRootDocument (fallback)" };
-                }
+                // Document in solution — use ShowDocument on EditorControl (UI thread)
+                var shown = ShowDocumentOnUIThread(session, existingDoc);
+                if (shown)
+                    return new { success = true, filePath, method = "EditorControl.ShowDocument" };
             }
 
-            // Document not in solution - shell execute it (vvvv will open it)
-            try
+            // Document not in solution — load it first, then show
+            var loadMethod = session.GetType().GetMethod("LoadDocumentInBackground",
+                BindingFlags.Public | BindingFlags.Instance);
+            if (loadMethod is not null)
             {
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(filePath!)
+                var resultObj = new { success = true, filePath, method = "LoadDocumentInBackground+ShowDocument" };
+                PostToUIThread(() =>
                 {
-                    UseShellExecute = true
+                    try
+                    {
+                        loadMethod.Invoke(session, new object[] { filePath! });
+                        // Give it a moment to load, then show
+                        Task.Delay(500).ContinueWith(_ =>
+                        {
+                            _nodeContext?.AppHost.SynchronizationContext?.Post(__ =>
+                            {
+                                var sol = session.GetType().GetProperty("CurrentSolution")?.GetValue(session);
+                                var docs = sol?.GetType().GetProperty("Documents")?.GetValue(sol) as IEnumerable;
+                                if (docs is not null)
+                                {
+                                    foreach (var d in docs)
+                                    {
+                                        var fp2 = d.GetType().GetProperty("FilePath")?.GetValue(d)?.ToString();
+                                        if (string.Equals(fp2, filePath, StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            ShowDocumentOnUIThread(session, d);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }, null);
+                        });
+                    }
+                    catch { }
                 });
-                return new { success = true, filePath, method = "ShellExecute" };
+                return resultObj;
             }
-            catch (Exception ex2)
-            {
-                return new { success = false, error = $"ShellExecute failed: {ex2.Message}" };
-            }
+
+            // Last resort: shell execute
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(filePath!)
+            { UseShellExecute = true });
+            return new { success = true, filePath, method = "ShellExecute (fallback)" };
         }
         catch (Exception ex)
         {
             return new { success = false, error = ex.Message };
         }
+    }
+
+    /// <summary>
+    /// Call EditorControl.ShowDocument on the UI thread. Returns true if successful.
+    /// Must be called from the UI thread OR via PostToUIThread.
+    /// </summary>
+    private bool ShowDocumentOnUIThread(object session, object document)
+    {
+        var done = new ManualResetEventSlim(false);
+        bool success = false;
+
+        PostToUIThread(() =>
+        {
+            try
+            {
+                var mainForm = session.GetType().GetProperty("MainForm")?.GetValue(session);
+                var editorControl = mainForm?.GetType().GetProperty("EditorControl")?.GetValue(mainForm);
+                if (editorControl is null) { done.Set(); return; }
+
+                // ShowDocument(Document document, ShowSpecialPatch showSpecialPatch)
+                // ShowSpecialPatch is likely an enum - try passing 0 (default/None)
+                var showMethod = editorControl.GetType().GetMethods()
+                    .FirstOrDefault(m => m.Name == "ShowDocument" && m.GetParameters().Length == 2);
+
+                if (showMethod is not null)
+                {
+                    var paramType = showMethod.GetParameters()[1].ParameterType;
+                    var defaultVal = Enum.ToObject(paramType, 0); // first enum value
+                    showMethod.Invoke(editorControl, new[] { document, defaultVal });
+                    success = true;
+                }
+            }
+            catch { }
+            finally { done.Set(); }
+        });
+
+        done.Wait(TimeSpan.FromSeconds(3));
+        return success;
     }
 
     private object HandleNewDocument(HttpListenerRequest request)
@@ -618,6 +673,71 @@ public class MCPBridgeServer
         {
             return new { success = false, error = ex.Message };
         }
+    }
+
+    // ── UI Thread MainForm Exploration ─────────────────────────────────────────
+
+    private object HandleMainFormExplore()
+    {
+        var result = new Dictionary<string, object?>();
+        var done = new ManualResetEventSlim(false);
+
+        // Must run on UI thread to safely access MainForm
+        PostToUIThread(() =>
+        {
+            try
+            {
+                var session = GetSession();
+                if (session is null) { result["error"] = "No session"; done.Set(); return; }
+
+                var mainFormProp = session.GetType().GetProperty("MainForm",
+                    BindingFlags.Public | BindingFlags.Instance);
+                var mainForm = mainFormProp?.GetValue(session);
+
+                if (mainForm is null) { result["error"] = "MainForm is null"; done.Set(); return; }
+
+                result["mainFormType"] = mainForm.GetType().FullName;
+
+                // Get EditorControl
+                var editorControlProp = mainForm.GetType().GetProperty("EditorControl",
+                    BindingFlags.Public | BindingFlags.Instance);
+                var editorControl = editorControlProp?.GetValue(mainForm);
+
+                if (editorControl is null) { result["error"] = "EditorControl is null"; done.Set(); return; }
+
+                result["editorControlType"] = editorControl.GetType().FullName;
+
+                // Get properties of EditorControl
+                result["properties"] = editorControl.GetType()
+                    .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                    .Select(p => $"{p.Name} : {p.PropertyType.Name}")
+                    .Take(60)
+                    .ToArray();
+
+                // Get methods of EditorControl (declared only first)
+                result["methods"] = editorControl.GetType()
+                    .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                    .Where(m => !m.IsSpecialName)
+                    .Select(m => $"{m.Name}({string.Join(", ", m.GetParameters().Select(p => $"{p.ParameterType.Name} {p.Name}"))}) : {m.ReturnType.Name}")
+                    .Take(100)
+                    .ToArray();
+            }
+            catch (Exception ex)
+            {
+                result["exception"] = ex.Message;
+            }
+            finally
+            {
+                done.Set();
+            }
+        });
+
+        // Wait for UI thread to complete (with timeout)
+        done.Wait(TimeSpan.FromSeconds(5));
+        if (result.Count == 0)
+            result["error"] = "Timed out waiting for UI thread";
+
+        return result;
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────────
