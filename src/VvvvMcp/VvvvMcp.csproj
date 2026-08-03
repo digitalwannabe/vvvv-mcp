@@ -9,9 +9,9 @@
     <ToolCommandName>vvvv-mcp</ToolCommandName>
     <!-- NuGet package metadata -->
     <PackageId>vvvv-mcp</PackageId>
-    <Version>0.9.1</Version>
+    <Version>1.0.0</Version>
     <Title>vvvv-mcp</Title>
-    <Description>MCP server for vvvv gamma — the live .NET visual programming environment. Provides AI agents with node search (6400+ nodes), patch reading and explanation, patch writing (create/add/connect nodes), C# plugin and SDSL shader generation, template access, SQLite FTS5 knowledge search, practical knowledge from help patches and forum solutions, and live bridge to a running vvvv instance.</Description>
+    <Description>MCP server for vvvv gamma. Search 6400+ nodes, read/write .vl patches, generate C# nodes and SDSL shaders, access the full Gray Book knowledge base, and connect to a live running vvvv instance via the VL.MCP.HDE editor extension. Works without a vvvv installation for all knowledge and patch tools.</Description>
     <Authors>digital.wannabe</Authors>
     <PackageTags>vvvv;vvvv-gamma;mcp;modelcontextprotocol;ai;agent;visual-programming</PackageTags>
     <PackageProjectUrl>https://github.com/digitalwannabe/mcp-gamma-server</PackageProjectUrl>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>VL.MCP.HDE</id>
+    <version>0.1.0-preview</version>
+    <title>VL.MCP.HDE</title>
+    <authors>digital.wannabe</authors>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <license type="expression">MIT</license>
+    <projectUrl>https://github.com/digitalwannabe/mcp-gamma-server</projectUrl>
+    <description>
+vvvv gamma editor extension for AI-assisted patching. Adds two modes via the HDE menu:
+
+Alt+B — Bridge: starts an HTTP server inside vvvv (localhost:7123) exposing the live
+session to any external MCP client (VS Code + Kilo, Claude Desktop, Cursor, etc.).
+
+Alt+C — Chat: launches Open WebUI as an embedded browser panel inside the editor,
+pre-connected to the vvvv MCP tools. Requires uv (https://astral.sh/uv).
+
+Experimental preview — breaking changes expected. Pairs with the vvvv-mcp dotnet tool.
+    </description>
+    <tags>VL vvvv vvvv-gamma mcp ai chat bridge hde extension openwebui llm</tags>
+    <dependencies>
+      <dependency id="VL.CoreLib" version="2025.7.0" />
+      <dependency id="VL.HDE" version="2025.7.0" />
+      <dependency id="VL.CEF" version="0.8.0" />
+      <dependency id="VL.CEF.Skia" version="0.8.0" />
+    </dependencies>
+  </metadata>
+</package>

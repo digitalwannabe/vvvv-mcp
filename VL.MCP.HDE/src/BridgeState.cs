@@ -2,7 +2,7 @@ using System.Collections;
 using System.Reflection;
 using VL.Core;
 
-namespace VL.MCP.Bridge;
+namespace VL.MCP;
 
 /// <summary>
 /// Holds a snapshot of the current vvvv editor state, updated each frame.

@@ -5,10 +5,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
+    <NoWarn>CS1591</NoWarn>
+    <!-- For distribution: compile DLLs into lib/net8.0/ next to the .vl file -->
+    <OutputPath>..\..\lib\net8.0\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="VL.Core" Version="2025.7.1-0156-gdf75a792b5" />
+    <PackageReference Include="VL.Core" Version="2025.7.4" />
   </ItemGroup>
 
   <ItemGroup>

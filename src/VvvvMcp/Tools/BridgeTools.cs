@@ -6,8 +6,8 @@ using VvvvMcp.Core.Services;
 namespace VvvvMcp.Tools;
 
 /// <summary>
-/// MCP tools that communicate with a live vvvv instance via the VL.MCP.Bridge.
-/// These tools require the bridge to be running inside vvvv (VL.MCP.Bridge.HDE.vl loaded).
+/// MCP tools that communicate with a live vvvv instance via the VL.MCP.HDE.
+/// These tools require the bridge to be running inside vvvv (VL.MCP.HDE.vl loaded).
 /// They degrade gracefully when the bridge is not available.
 /// </summary>
 [McpServerToolType]
@@ -42,7 +42,7 @@ public class BridgeTools
             return JsonSerializer.Serialize(new
             {
                 connected = false,
-                message = "No vvvv instance detected. Make sure vvvv is running with VL.MCP.Bridge.HDE.vl loaded. " +
+                message = "No vvvv instance detected. Make sure vvvv is running with VL.MCP.HDE.vl loaded. " +
                           "The bridge listens on localhost:7123 by default (configurable via VVVV_MCP_BRIDGE_PORT env var)."
             }, JsonOpts);
         }
@@ -64,7 +64,7 @@ public class BridgeTools
     [McpServerTool(Name = "get_running_documents"), Description(
         "List all .vl documents currently open in the running vvvv instance. " +
         "Shows file paths and which document is active. " +
-        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+        "Requires the VL.MCP.HDE to be running in vvvv.")]
     public async Task<string> GetRunningDocuments()
     {
         if (!await _bridge.CheckAvailabilityAsync())
@@ -90,7 +90,7 @@ public class BridgeTools
         "Get current compilation errors and warnings from the running vvvv instance. " +
         "Returns error messages with severity and source location. " +
         "Use after editing a .vl file to check if changes compiled successfully. " +
-        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+        "Requires the VL.MCP.HDE to be running in vvvv.")]
     public async Task<string> GetVvvvErrors()
     {
         if (!await _bridge.CheckAvailabilityAsync())
@@ -125,7 +125,7 @@ public class BridgeTools
         "Tell the running vvvv instance to reload a specific .vl file from disk. " +
         "Use after editing a file externally (e.g. via XML manipulation) to force vvvv to pick up the changes. " +
         "Note: vvvv usually hot-reloads on file save automatically, but this ensures it. " +
-        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+        "Requires the VL.MCP.HDE to be running in vvvv.")]
     public async Task<string> ReloadFileInVvvv(
         [Description("Absolute path to the .vl file to reload")] string filePath)
     {
@@ -151,7 +151,7 @@ public class BridgeTools
     [McpServerTool(Name = "get_vvvv_state"), Description(
         "Get the runtime state of the running vvvv instance — " +
         "whether the patch is running or paused, frame count, and uptime. " +
-        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+        "Requires the VL.MCP.HDE to be running in vvvv.")]
     public async Task<string> GetVvvvState()
     {
         if (!await _bridge.CheckAvailabilityAsync())
@@ -181,7 +181,7 @@ public class BridgeTools
     [McpServerTool(Name = "open_document_in_vvvv"), Description(
         "Open a .vl document in the running vvvv instance. " +
         "Opens it as a visible tab in the editor. " +
-        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+        "Requires the VL.MCP.HDE to be running in vvvv.")]
     public async Task<string> OpenDocumentInVvvv(
         [Description("Absolute path to the .vl file to open")] string filePath)
     {
@@ -195,7 +195,7 @@ public class BridgeTools
     [McpServerTool(Name = "close_document_in_vvvv"), Description(
         "Close a document in the running vvvv instance. " +
         "Optionally saves before closing. " +
-        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+        "Requires the VL.MCP.HDE to be running in vvvv.")]
     public async Task<string> CloseDocumentInVvvv(
         [Description("Absolute path to the .vl file to close")] string filePath,
         [Description("Whether to save before closing")] bool save = false)
@@ -210,7 +210,7 @@ public class BridgeTools
     [McpServerTool(Name = "save_document_in_vvvv"), Description(
         "Save a specific document in the running vvvv instance. " +
         "Use 'all' as filePath to save all open documents. " +
-        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+        "Requires the VL.MCP.HDE to be running in vvvv.")]
     public async Task<string> SaveDocumentInVvvv(
         [Description("Absolute path to the .vl file to save, or 'all' to save everything")] string filePath)
     {
@@ -229,7 +229,7 @@ public class BridgeTools
     [McpServerTool(Name = "get_open_tabs"), Description(
         "Get list of open tabs/patches in the vvvv editor. " +
         "Shows which canvases are currently open and which one is active. " +
-        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+        "Requires the VL.MCP.HDE to be running in vvvv.")]
     public async Task<string> GetOpenTabs()
     {
         if (!await _bridge.CheckAvailabilityAsync())
@@ -241,7 +241,7 @@ public class BridgeTools
 
     [McpServerTool(Name = "undo_in_vvvv"), Description(
         "Undo the last action on the active canvas in vvvv. " +
-        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+        "Requires the VL.MCP.HDE to be running in vvvv.")]
     public async Task<string> UndoInVvvv()
     {
         if (!await _bridge.CheckAvailabilityAsync())
@@ -253,7 +253,7 @@ public class BridgeTools
 
     [McpServerTool(Name = "redo_in_vvvv"), Description(
         "Redo the last undone action on the active canvas in vvvv. " +
-        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+        "Requires the VL.MCP.HDE to be running in vvvv.")]
     public async Task<string> RedoInVvvv()
     {
         if (!await _bridge.CheckAvailabilityAsync())
@@ -269,7 +269,7 @@ public class BridgeTools
         "Get recent log entries from the vvvv console. " +
         "Captures Information, Warning, and Error level messages. " +
         "Use severity filter to narrow results. " +
-        "Requires the VL.MCP.Bridge to be running in vvvv.")]
+        "Requires the VL.MCP.HDE to be running in vvvv.")]
     public async Task<string> GetVvvvLog(
         [Description("Maximum number of entries to return (default 50)")] int limit = 50,
         [Description("Minimum severity: 'info', 'warning', or 'error'")] string? severity = null)
@@ -290,7 +290,7 @@ public class BridgeTools
             connected = false,
             error = "No vvvv bridge detected. These live tools require:\n" +
                     "1. vvvv gamma is running\n" +
-                    "2. VL.MCP.Bridge.HDE.vl is loaded (reference the VL.MCP.Bridge package)\n" +
+                    "2. VL.MCP.HDE.vl is loaded (reference the VL.MCP.HDE package)\n" +
                     "3. Bridge server is enabled (default: localhost:7123)\n\n" +
                     "The other vvvv-mcp tools (patch reading, node search, etc.) work without the bridge."
         }, JsonOpts);

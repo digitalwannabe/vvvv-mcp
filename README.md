@@ -1,8 +1,8 @@
 # vvvv-mcp
 
-A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for [vvvv gamma](https://vvvv.org) — giving AI agents deep knowledge of vvvv's node API, the ability to read and explain `.vl` patches, and access to the full official documentation.
+A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for [vvvv gamma](https://vvvv.org) — giving AI agents deep knowledge of vvvv's node API, the ability to read, explain and **write** `.vl` patches, generate C# nodes and SDSL shaders, and optionally connect to a **live running vvvv instance** for real-time feedback.
 
-Works **without a vvvv installation** — for searching nodes, explaining patches, and generating new patches. vvvv does not need to be installed or running.
+Works **without a vvvv installation** for all knowledge, search, read, and generate tools. Live tools require the companion `VL.MCP.HDE` editor extension (see below).
 
 ---
 
@@ -14,7 +14,7 @@ Requires [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) or later
 # Install globally
 dotnet tool install -g vvvv-mcp
 
-# Configure your MCP client (Claude Desktop, VS Code, Cursor) automatically
+# Configure your MCP client (Claude Desktop, VS Code, Cursor, Kilo) automatically
 vvvv-mcp --setup
 ```
 
@@ -33,10 +33,10 @@ vvvv-mcp --setup   # re-run if paths changed
 
 - **Search** 6,400+ vvvv nodes by name, category, or keyword across all core packages
 - **Read and explain** `.vl` patch files — parse the dataflow graph and describe it in natural language
+- **Write** `.vl` patches — add nodes, connect pins, set values, create new patches
+- **Generate** C# custom nodes (`[ProcessNode]`) and SDSL shaders from a description
 - **Access the full vvvv knowledge base** — the entire Gray Book, all of tebjan's agent skills, and a curated package reference, served as MCP resources
-- **Generate** new `.vl` patches and custom C# nodes (prompt-guided) - (not yet implemented)
-
-The MCP is completely independent of any vvvv installation. It works whether or not vvvv is installed, and is not tied to any specific vvvv version.
+- **Live vvvv bridge** *(via `VL.MCP.HDE`)* — read compilation errors, running documents, log output, and perform editor operations directly inside a running vvvv instance
 
 ---
 
@@ -55,19 +55,57 @@ The MCP is completely independent of any vvvv installation. It works whether or 
 
 | Tool | Description |
 |---|---|
-| `list_knowledge` | List all 17 knowledge documents with descriptions. |
+| `list_knowledge` | List all knowledge documents with descriptions. |
 | `read_knowledge` | Read the full content of a knowledge document by name. |
 | `search_knowledge` | Full-text search across all knowledge documents with snippet results. |
+| `search_practical` | Search help patches, forum solutions, and code snippets from the community knowledge index. |
+| `get_index_stats` | Row counts for the SQLite search index (knowledge, nodes, practical). |
 
-### Patch Tools
+### Patch Read Tools
 
 | Tool | Description |
 |---|---|
 | `read_patch` | Parse a `.vl` file and return the structured graph (nodes, pins, links, IOBoxes, dependencies). |
 | `explain_patch` | Natural-language explanation of a parsed patch. |
 | `list_patch_dependencies` | List NuGet dependencies declared in a `.vl` file. |
-| `read_file` | Read any source file (`.vl`, `.cs`, `.sdsl`, `.hlsl`, `.json`, etc.). |
-| `list_directory` | Browse project directory structure. |
+
+### Patch Write Tools
+
+| Tool | Description |
+|---|---|
+| `create_patch` | Create a new empty `.vl` patch with specified category and dependencies. |
+| `add_node` | Add a node to a patch by name, category, and dependency. Returns node ID and pin IDs for wiring. |
+| `add_pad` | Add a value pad (IOBox) to a patch with an optional initial value. |
+| `connect_pins` | Connect an output pin (or pad) to an input pin. |
+| `remove_node` | Remove a node and all its connected links from a patch. |
+| `remove_link` | Remove a specific connection from a patch. |
+| `set_value` | Set the default value of a pad or pin. |
+
+### Code Generation Tools
+
+| Tool | Description |
+|---|---|
+| `create_csharp_plugin` | Generate a C# `[ProcessNode]` or static operation from a description, with typed input/output pins. |
+| `create_shader` | Generate a Stride SDSL shader — TextureFX (filter/mixer/source), ComputeFX, DrawFX, or ShaderFX. |
+| `list_templates` | List all available vvvv project templates (VL, C#, SDSL). |
+| `get_template` | Get the full content of a template file. |
+
+### Live Editor Tools *(requires `VL.MCP.HDE`)*
+
+| Tool | Description |
+|---|---|
+| `check_bridge_connection` | Check if the vvvv bridge is reachable and return runtime state. |
+| `get_running_documents` | List all `.vl` documents currently open in the vvvv editor. |
+| `get_vvvv_errors` | Get current compilation errors and warnings. |
+| `get_vvvv_state` | Runtime state: running/paused, frame count, uptime. |
+| `get_vvvv_log` | Recent log entries from the vvvv console (captures ILogger + System.Console output). |
+| `get_open_tabs` | Get open canvas tabs in the patch editor. |
+| `open_document_in_vvvv` | Open a `.vl` file in the editor. |
+| `close_document_in_vvvv` | Close a document (optionally saving first). |
+| `save_document_in_vvvv` | Save a document or all documents. |
+| `reload_file_in_vvvv` | Force vvvv to hot-reload a file from disk. |
+| `undo_in_vvvv` | Undo the last action on the active canvas. |
+| `redo_in_vvvv` | Redo the last undone action. |
 
 ---
 
@@ -78,7 +116,7 @@ The MCP is completely independent of any vvvv installation. It works whether or 
 | URI | Content |
 |---|---|
 | `vvvv://knowledge/quickref` | XML cheat sheet: NodeReference patterns, critical .vl rules, VL.CoreLib categories, Stride scene, topic index |
-| `vvvv://knowledge/file-format` | Complete `.vl` XML format reference (from tebjan/vvvv-skills) |
+| `vvvv://knowledge/file-format` | Complete `.vl` XML format reference |
 | `vvvv://knowledge/fundamentals` | Live compilation model, frame-based execution, node categories |
 | `vvvv://knowledge/patching` | Dataflow patterns, regions, channels, event handling, anti-patterns |
 | `vvvv://knowledge/custom-nodes` | `[ProcessNode]` lifecycle, `Update()`, change detection, assembly import |
@@ -89,29 +127,86 @@ The MCP is completely independent of any vvvv installation. It works whether or 
 | `vvvv://knowledge/node-libraries` | Creating node libraries: ImportAsIs/Namespace/Type, service registration |
 | `vvvv://knowledge/troubleshooting` | Common errors: pin order, missing ImportAsIs, shader mistakes, runtime issues |
 | `vvvv://knowledge/packages` | 230 curated packages from Libraries.xml, organized by category |
-| `vvvv://knowledge/gray-book/language` | Official Gray Book — VL language: nodes, patches, operations, regions, types |
-| `vvvv://knowledge/gray-book/extending` | Official Gray Book — writing nodes, shaders, design guidelines, libraries |
-| `vvvv://knowledge/gray-book/libraries` | Official Gray Book — VL.CoreLib, Stride, collections, reactive, serialization |
-| `vvvv://knowledge/gray-book/hde` | Official Gray Book — editor GUI, node browser, debugging, NuGet management |
-| `vvvv://knowledge/gray-book/best-practice` | Official Gray Book — video, deployment, version control, text rendering |
-| `vvvv://knowledge/gray-book/getting-started` | Official Gray Book — intro for .NET devs, creative coders, beta users |
-
-### Catalog (`vvvv://catalog/`)
-
-| URI | Content | 
-|---|---|
-| `vvvv://catalog/stats` | Node count by type, packages, top categories |
-| `vvvv://catalog/categories` | Full sorted category list |
+| `vvvv://knowledge/gray-book/*` | Official Gray Book — language, extending, libraries, HDE, best-practice, getting-started |
 
 ---
 
-## Prompts
+## VL.MCP.HDE — In-editor AI assistant *(experimental preview)*
 
-| Prompt | Description |
-|---|---|
-| `explain_vl_patch` | Guided workflow for reading and explaining a `.vl` patch file |
-| `create_vl_patch` | Step-by-step guidance for generating a new `.vl` patch from a description |
-| `create_csharp_node` | Template and guidance for creating a custom C# node |
+> **Status:** experimental preview — breaking changes expected.
+
+`VL.MCP.HDE` is a companion vvvv gamma editor extension that adds two features:
+
+| Feature | Shortcut | What it does |
+|---|---|---|
+| **Bridge** | `Alt+B` toggle | HTTP server on `localhost:7123` — exposes the live vvvv session to any external MCP client (VS Code + Kilo, Claude Desktop, etc.) |
+| **Chat** | `Alt+C` toggle | Launches [Open WebUI](https://openwebui.com) as a chat panel directly inside the vvvv editor, pre-connected to the bridge's MCP tools |
+
+### Install
+
+```powershell
+# Install via vvvv's NuGet package manager, or add to startup args:
+nuget install VL.MCP.HDE
+```
+
+In your vvvv startup arguments:
+```
+--package-repositories "path/to/packages" --editable-packages "VL.MCP.HDE"
+```
+
+Dependencies (installed automatically via NuGet):
+- `VL.CoreLib` — vvvv core
+- `VL.HDE` — editor extension API
+- `VL.CEF` + `VL.CEF.Skia` — Chromium browser rendering (for Chat mode)
+
+### Bridge mode (`Alt+B`)
+
+Starts an HTTP server inside vvvv at `localhost:7123`. External MCP clients connect to it directly. The bridge exposes:
+- All 12 live-editor tools (documents, errors, log, open/save/reload, undo/redo)
+- MCP/SSE endpoint (`/mcp/sse`) for legacy clients
+- **MCP Streamable HTTP endpoint** (`/mcp`) for Open WebUI and 2025+ clients
+
+Configure your external MCP client (once):
+```json
+{
+  "mcpServers": {
+    "vvvv-bridge": {
+      "command": "dotnet",
+      "args": ["run", "--project", "path/to/VvvvMcp"]
+    }
+  }
+}
+```
+Or point directly at the running bridge: `http://localhost:7123/mcp`
+
+### Chat mode (`Alt+C`) — powered by [Open WebUI](https://openwebui.com)
+
+Launches [Open WebUI](https://github.com/open-webui/open-webui) as an embedded browser panel inside vvvv. Open WebUI handles the full LLM chat interface; the vvvv MCP tools are automatically registered.
+
+**Requirements:**
+- [`uv`](https://docs.astral.sh/uv/) must be installed: `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`
+- An LLM endpoint — [Ollama](https://ollama.com) (local) or any OpenAI-compatible API
+
+**First start:** `uv` downloads and installs Open WebUI (~500 MB, one-time). Subsequent starts are fast (~10 s). Chat history, settings, and uploaded documents are stored in `%LOCALAPPDATA%\vvvv-mcp\openwebui-data\`.
+
+**Activating the vvvv tools in chat:**
+The vvvv MCP server (`http://localhost:7123/mcp`) is automatically registered in Open WebUI on first launch. To use it in a conversation:
+- Click the **`+`** button in the chat input bar → toggle on **vvvv-mcp**
+
+To activate tools by default for a model (so you don't need to click `+` every time):
+1. Open WebUI → **Workspace → Models**
+2. Edit the model you want to use
+3. Under **Tools**, enable **vvvv-mcp**
+4. Save — tools will now be active in every new chat with that model
+
+**Attribution:** Chat mode is powered by [Open WebUI](https://github.com/open-webui/open-webui) (MIT License). Open WebUI is an independent project and is not affiliated with this repository.
+
+---
+
+## Help to Improve
+
+- Anytime the MCP does a bad job/misunderstands vvvv, you can either dump the chat log (if non-sensitive) or ask the LLM to summarize what went wrong and how it would improve the MCP, then file it as an issue.
+- When you create video-based tutorials, create a good transcript which we can add to the MCP's knowledge base.
 
 ---
 
@@ -133,23 +228,29 @@ dotnet build src/VvvvMcp.sln
 dotnet run --project src/VvvvMcp -- --setup   # configure MCP clients to use this build
 ```
 
-No environment variables are required. Catalog and knowledge files are discovered automatically from the bundled tool files (and repo layout when running from source).
-
 ### Test with MCP Inspector
 
 ```bash
 npx @modelcontextprotocol/inspector -- dotnet src/VvvvMcp/bin/Debug/net8.0/VvvvMcp.dll
 ```
 
-### Publish a new version
+### Publish a new version of the MCP server
 
 ```powershell
-# 1. Test the package locally
-./scripts/publish.ps1 -Version 0.8.0
-
+# 1. Bump version in src/VvvvMcp/VvvvMcp.csproj
 # 2. Commit, tag, push — GitHub Actions publishes to NuGet.org automatically
-git add -A && git commit -m "release 0.8.0"
-git tag v0.8.0
+git add -A && git commit -m "release 0.x.0"
+git tag v0.x.0
+git push origin main --tags
+```
+
+### Publish VL.MCP.HDE (vvvv editor extension)
+
+```powershell
+# 1. Bump version in VL.MCP.HDE/VL.MCP.HDE.nuspec
+# 2. Commit, tag, push — GitHub Actions workflow publishes to NuGet.org
+git add -A && git commit -m "VL.MCP.HDE 0.x.0"
+git tag vl-0.x.0
 git push origin main --tags
 ```
 
@@ -160,164 +261,86 @@ git push origin main --tags
 ```
 vvvv-mcp/
 │
-├── src/                          # MCP server (.NET 8)
+├── src/                          # MCP server (.NET 8 dotnet tool)
 │   ├── VvvvMcp.sln
 │   ├── VvvvMcp/                  # Server entry point
 │   │   ├── Program.cs
-│   │   ├── Tools/                # search_nodes, read_patch, read_knowledge, ...
+│   │   ├── Tools/                # search_nodes, read_patch, add_node, create_shader, ...
 │   │   ├── Resources/            # vvvv://knowledge/* and vvvv://catalog/*
 │   │   └── Prompts/              # explain_vl_patch, create_vl_patch, ...
 │   ├── VvvvMcp.Core/             # Shared library
 │   │   ├── Models/               # NodeModels, PatchModels, CatalogModels
 │   │   └── Services/
-│   │       ├── NodeCatalogService    # Node search & indexing
-│   │       ├── KnowledgeService      # Knowledge document loading & search
-│   │       ├── PatchReaderService    # .vl XML parser
-│   │       └── PatchExplainerService # Natural language patch descriptions
+│   │       ├── NodeCatalogService      # Node search & indexing
+│   │       ├── KnowledgeService        # Knowledge document loading & search
+│   │       ├── PatchReaderService      # .vl XML parser
+│   │       ├── PatchWriterService      # .vl XML writer (add/connect/remove nodes)
+│   │       ├── PatchExplainerService   # Natural language patch descriptions
+│   │       ├── ShaderGeneratorService  # SDSL shader code generation
+│   │       └── PluginGeneratorService  # C# ProcessNode code generation
 │   └── VvvvMcp.Tests/            # Smoke tests
 │
-├── VVVVNodeAnalyzer/             # Node catalog generator
-│   ├── Analyzers/
-│   │   ├── VLLibraryAnalyzer.cs  # Parses .vl XML → VLNodeDefinition
-│   │   ├── UsableNodeExtractor.cs # VLNodeDefinition → UsableNode
-│   │   ├── DotNetLibraryAnalyzer.cs # .dll reflection → nodes
-│   │   └── PluginAnalyzer.cs     # Top-level orchestrator
-│   ├── Models/                   # VLNodeDefinition, UsableNode, VLDocument
-│   ├── Exporters/                # JSON + Markdown output
-│   └── output/
-│       ├── vvvv_nodes_mcp.json   # Generated catalog
-│       └── vvvv_nodes_mcp.md
+├── VL.MCP.HDE/                   # vvvv gamma editor extension (NuGet: VL.MCP.HDE)
+│   ├── VL.MCP.HDE.vl             # HDE extension entry point (auto-loads in editor)
+│   ├── VL.MCP.HDE.nuspec         # NuGet package spec
+│   └── src/
+│       ├── MCPBridgeServer.cs    # [ProcessNode]: HTTP server + MCP/SSE + chat host
+│       ├── McpSseServer.cs       # MCP Streamable HTTP + legacy SSE endpoints
+│       ├── McpChatHost.cs        # Open WebUI process manager (uv-based)
+│       ├── BridgeState.cs        # vvvv runtime introspection via reflection
+│       ├── LogCapture.cs         # ILoggerProvider + ConsoleTee for full log capture
+│       └── VL.MCP.Bridge.csproj
+│
+├── VVVVNodeAnalyzer/             # Node catalog generator (no vvvv installation needed)
 │
 ├── knowledge/                    # MCP knowledge base (677 KB, 24 files)
 │   ├── The-Gray-Book/            # Git submodule: vvvv/The-Gray-Book
 │   ├── tebjan-vvvv-skills/       # Git submodule: tebjan/vvvv-skills
-│   ├── gray-book-*.md            # Generated: Gray Book by section
-│   ├── vvvv-*.md / vl-*.md       # Generated: tebjan's skill files
-│   ├── vl-quickref.md            # Manual: XML cheat sheet + topic index
-│   ├── vvvv-packages.md          # Generated: from Libraries.xml
-│   └── MANIFEST.md               # What was generated, from which sources
-│
-├── packs-community/              # Downloaded NuGet packages (gitignored)
-│   └── VL.PackageName.x.y.z/    # Extracted nupkg — structure matches vvvv packs/
-│
-├── output/                       # Root-level output copy (optional, gitignored)
-│   └── vvvv_nodes_mcp.json
+│   └── ...
 │
 ├── scripts/
-│   ├── build-knowledge.ps1       # Regenerate knowledge/ from submodules + GitHub
-│   ├── install-community-packs.ps1 # Download all vvvv NuGet packages
-│   └── update-catalog.ps1        # Full pipeline: download → analyze → output
+│   ├── build-knowledge.ps1
+│   ├── install-community-packs.ps1
+│   └── update-catalog.ps1
 │
-└── .vscode/
-    └── mcp.json                  # VS Code MCP client configuration
+└── .github/workflows/
+    ├── publish.yml               # Publishes vvvv-mcp dotnet tool to NuGet.org
+    └── publish-VL-package.yml    # Publishes VL.MCP.HDE to NuGet.org
 ```
-
----
-
-## Node Catalog
-
-### Generation
-
-The catalog is generated by `VVVVNodeAnalyzer` from the actual vvvv NuGet packages. **No local vvvv installation required** — all packages are available on NuGet.org.
-
-```powershell
-# Download all packages and regenerate the catalog:
-./scripts/update-catalog.ps1
-
-# Force re-download (e.g. after a new vvvv release):
-./scripts/update-catalog.ps1 -Force
-```
-
-### Coverage
-
-The current catalog (`VVVVNodeAnalyzer/output/vvvv_nodes_mcp.json`) covers **38 packages** with **~6,400 user-facing nodes** across **374 categories**:
-
-| Package group | Packages | Notable nodes |
-|---|---|---|
-| Core | VL.CoreLib, VL.CoreLib.Windows | Math, Collections, Reactive, Animation, 3D, IO |
-| 3D Rendering | VL.Stride, VL.Stride.Runtime, VL.Stride.TextureFX, VL.Stride.Windows | SceneWindow, RootScene, Entity, Models, Materials, Cameras |
-| 2D Rendering | VL.Skia | Canvas, Layers, Shapes, Text, Images |
-| GUI | VL.ImGui, VL.ImGui.Skia, VL.ImGui.Stride | Buttons, Sliders, TextInput, ColorPicker |
-| Audio | VL.Audio, VL.Audio.UI | Buffer, BufferPlayer, DSP, AudioSignal |
-| Networking | VL.IO.OSC, VL.IO.Midi, VL.IO.ArtNet, VL.IO.Redis, VL.IO.WebSocket, VL.IO.TUIO, VL.IO.OSCQuery | Send/Receive nodes for each protocol |
-| Serialization | VL.Serialization.Raw, VL.Serialization.MessagePack, VL.Serialization.FSPickler | Binary/MessagePack/FSPickler serialization |
-| Platform | VL.Core, VL.AppServices, VL.TPL.Dataflow, VL.Video | Core services, TPL Dataflow, video |
-
-### Node types in the catalog
-
-| Type | Count | Description |
-|---|---|---|
-| Operation | ~1,600 | Stateless pure functions (e.g. `+`, `TransformSRT`, `Lerp`) |
-| Process | ~1,200 | Stateful nodes with Create+Update+Dispose lifecycle |
-| Method | ~1,400 | Member operations on a type |
-| Setter | ~1,000 | Synthesized from type fields/properties |
-| Getter | ~1,000 | Synthesized from type fields/properties |
-| Class | ~200 | Mutable object types |
-| Record | ~90 | Immutable value types |
-
-### Extending the catalog
-
-To add community packages (VL.Fuse, VL.OpenCV, VL.MediaPipe, etc.):
-
-```powershell
-# Download ALL community packages from Libraries.xml + core packages:
-./scripts/install-community-packs.ps1
-
-# Then run analysis on the downloaded packages:
-dotnet run --project VVVVNodeAnalyzer/VVVVNodeAnalyzer.csproj -- batch packs-community VVVVNodeAnalyzer
-```
-
----
-
-## Knowledge Base
-
-The knowledge base lives in `knowledge/` and is served as MCP resources. It is built from two git submodules and one live-fetched source:
-
-| Source | Content | Files |
-|---|---|---|
-| `knowledge/The-Gray-Book` (submodule) | Official vvvv documentation | `gray-book-*.md` (7 sections, ~420 KB) |
-| `knowledge/tebjan-vvvv-skills` (submodule) | Expert agent skill files | `vvvv-*.md` / `vl-*.md` (14 files, ~200 KB) |
-| Libraries.xml (fetched live) | Official package catalog | `vvvv-packages.md` |
-| Manual | XML cheat sheet | `vl-quickref.md` |
-
-**To regenerate after submodule updates:**
-
-```powershell
-git submodule update --remote --merge
-./scripts/build-knowledge.ps1
-```
-
-The script regenerates all 22 generated files. The one manually maintained file (`vl-quickref.md`) is never overwritten.
-
-**Images in the Gray Book:** The Gray Book contains ~239 diagrams and screenshots. In the generated markdown files, image references are replaced with `[IMAGE: filename -- "alt text"]` markers so the LLM knows visual content exists. Future work: use vision models to describe diagrams inline.
 
 ---
 
 ## Architecture
 
 ```
-MCP Client (Claude / Cursor / Copilot)
-         │  stdio JSON-RPC
-         ▼
-┌─────────────────────────────────────────┐
-│            VvvvMcp (server)              │
-│                                          │
-│  Tools          Resources    Prompts     │
-│  search_nodes   knowledge/*  explain_vl  │
-│  read_patch     catalog/*    create_vl   │
-│  read_knowledge              create_cs   │
-│  ...                                     │
-│                                          │
-│  NodeCatalogService   (6,400 nodes)      │
-│  KnowledgeService     (677 KB docs)      │
-│  PatchReaderService   (.vl XML)          │
-│  PatchExplainerService                   │
-└─────────────────────────────────────────┘
-         │                    │
-         ▼                    ▼
-vvvv_nodes_mcp.json       knowledge/*.md
-(VVVVNodeAnalyzer/output/  (generated by
-VVVVNodeAnalyzer)        build-knowledge.ps1)
+┌─────────────────────────────────────────────────────────────────┐
+│  External IDE (VS Code + Kilo / Claude Desktop / Cursor)        │
+│       │  stdio MCP                                              │
+│       ▼                                                         │
+│  ┌──────────────────────────────────────┐                       │
+│  │  vvvv-mcp  (dotnet tool, MCP server) │                       │
+│  │  search, read, write, generate, ...  │                       │
+│  └──────────────────────────────────────┘                       │
+│       │  HTTP localhost:7123/api/*  (live tools only)           │
+│       ▼                                                         │
+│  ┌──────────────────────────────────────┐                       │
+│  │  VL.MCP.HDE (inside vvvv.exe)        │                       │
+│  │  MCPBridgeServer [ProcessNode]       │                       │
+│  │  · /api/*   → REST for vvvv-mcp      │                       │
+│  │  · /mcp     → Streamable HTTP MCP    │◄── Open WebUI         │
+│  │  · /mcp/sse → legacy SSE MCP         │                       │
+│  └──────────────────────────────────────┘                       │
+│       ▲  Alt+B / Alt+C (HDE menu)                               │
+│                                                                 │
+│  vvvv.exe ────────────────────────────────────────────────────  │
+│  running patches, compilation, editor state                     │
+└─────────────────────────────────────────────────────────────────┘
+
+Chat mode:
+  vvvv (Alt+C) → McpChatHost → uv → Open WebUI (localhost:7125)
+                                          │
+                                          └─► /mcp (Streamable HTTP)
+                                              → vvvv live tools
 ```
 
 ---
@@ -325,15 +348,37 @@ VVVVNodeAnalyzer)        build-knowledge.ps1)
 ## Roadmap
 
 - **Phase 1** ✅ Read-only tools — node search, patch reading, natural language explanations
-- **Phase 1.5** ✅ Knowledge base — full Gray Book, tebjan's skills, 677 KB of vvvv documentation
-- **Phase 1.6** ✅ Analyzer improvements — correct VL category resolution, getter/setter synthesis, VL type names, version parsing, AllDirectories scan
-- **Phase 2** 🔜 Write capabilities — create/edit `.vl` patches, generate C# plugins and SDSL shaders
-- **Phase 3** 🔜 Live vvvv bridge — console output capture, rendering snapshots (Spout), hot-reload feedback loop
-- **Phase 4** 🔜 Community ecosystem — analyze all Libraries.xml packages, index help patches as examples, per-node usage lookup
-- **Phase 5** 🔜 Continuous improvement agents — forum/changelog scraper, broken-patch learner, knowledge updater
+- **Phase 1.5** ✅ Knowledge base — full Gray Book, tebjan's skills, 677 KB of documentation
+- **Phase 1.6** ✅ Analyzer improvements — correct VL category resolution, getter/setter synthesis
+- **Phase 2** ✅ Write capabilities — create/edit `.vl` patches, generate C# plugins and SDSL shaders
+- **Phase 3** ✅ Live vvvv bridge — `VL.MCP.HDE` editor extension, console capture, hot-reload feedback
+- **Phase 3.5** ✅ In-editor AI chat — Open WebUI embedded via CEF, MCP Streamable HTTP transport
+- **Phase 4** 🔜 Community ecosystem — analyze all Libraries.xml packages, index help patches, per-node usage lookup
+- **Phase 5** 🔜 Continuous improvement — forum/changelog scraper, knowledge updater
+
+---
+
+## Node Catalog
+
+### Coverage
+
+The current catalog covers **38 packages** with **~6,400 user-facing nodes** across **374 categories**.
+
+### Extending the catalog
+
+```powershell
+./scripts/install-community-packs.ps1
+dotnet run --project VVVVNodeAnalyzer/VVVVNodeAnalyzer.csproj -- batch packs-community VVVVNodeAnalyzer
+```
 
 ---
 
 ## License
 
 MIT
+
+### Third-party attributions
+
+- **[Open WebUI](https://github.com/open-webui/open-webui)** (MIT) — used in Chat mode via `VL.MCP.HDE`. Open WebUI is an independent open-source project. This repository does not modify or redistribute Open WebUI; it launches it as a separate process via `uv`.
+- **[tebjan/vvvv-skills](https://github.com/tebjan/vvvv-skills)** — knowledge base content (MIT)
+- **[vvvv/The-Gray-Book](https://github.com/vvvv/The-Gray-Book)** — official vvvv documentation (CC-BY-4.0)

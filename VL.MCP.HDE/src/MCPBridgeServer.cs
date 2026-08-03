@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 using VL.Core;
 using VL.Core.Import;
 
-namespace VL.MCP.Bridge;
+namespace VL.MCP;
 
 /// <summary>
 /// Process node that runs an HTTP bridge server inside vvvv.
@@ -25,6 +25,13 @@ public class MCPBridgeServer
     private readonly BridgeState _state = new();
     private readonly BridgeLogCapture _logCapture = new();
     private bool _logProviderRegistered;
+    private bool _consoleTeeInstalled;
+    private McpSseServer? _mcpSse;
+    private McpChatHost?  _chatHost;
+    // Chat toggle — rising edge of openChat flips _chatEnabled, so both
+    // a momentary bang and a persistent bool work as input
+    private bool _chatEnabled;
+    private bool _prevOpenChat;
     
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -33,10 +40,12 @@ public class MCPBridgeServer
         WriteIndented = false
     };
 
-    public (int Port, bool IsRunning, string? LastError) Update(
+    public (int Port, bool IsRunning, string? LastError, bool ChatIsReady) Update(
         NodeContext nodeContext,
         int port = 7123,
-        bool enabled = true)
+        bool enabled = true,
+        bool openChat = false,
+        int chatPort = 7125)
     {
         _nodeContext = nodeContext;
         string? lastError = null;
@@ -44,7 +53,7 @@ public class MCPBridgeServer
         if (!enabled)
         {
             Stop();
-            return (port, false, null);
+            return (port, false, null, false);
         }
 
         if (port != _currentPort && _listener is not null)
@@ -56,7 +65,7 @@ public class MCPBridgeServer
             lastError = Start();
         }
 
-        // Register log capture provider (once)
+        // Register ILogger capture provider (once)
         if (!_logProviderRegistered)
         {
             try
@@ -64,6 +73,19 @@ public class MCPBridgeServer
                 var appHost = nodeContext.AppHost;
                 appHost.LoggerFactory.AddProvider(_logCapture);
                 _logProviderRegistered = true;
+            }
+            catch { }
+        }
+
+        // Tee Console.Out/Error into the same capture buffer (once)
+        // This picks up System.Console entries: [OpenWebUI] messages, vvvv Sys log, etc.
+        if (!_consoleTeeInstalled)
+        {
+            try
+            {
+                Console.SetOut(new ConsoleTee(Console.Out,   _logCapture, Microsoft.Extensions.Logging.LogLevel.Information, "System.Console"));
+                Console.SetError(new ConsoleTee(Console.Error, _logCapture, Microsoft.Extensions.Logging.LogLevel.Warning,     "System.Console.Error"));
+                _consoleTeeInstalled = true;
             }
             catch { }
         }
@@ -82,17 +104,32 @@ public class MCPBridgeServer
         catch { }
 
         var isRunning = _listener is not null && _listener.IsListening;
-        return (port, isRunning, lastError);
+
+        // Rising edge of openChat toggles _chatEnabled — works with both
+        // a persistent bool (Toggle node) and a momentary bang (Command.On Execute)
+        if (openChat && !_prevOpenChat) _chatEnabled = !_chatEnabled;
+        _prevOpenChat = openChat;
+
+        // Drive chat host — server must be up first
+        var chatState = (IsReady: false, IsStarting: false, LastError: (string?)null, ChatUrl: $"http://localhost:{chatPort}");
+        if (isRunning)
+        {
+            _chatHost ??= new McpChatHost();
+            chatState = _chatHost.Update(_chatEnabled, chatPort, port);
+        }
+
+        return (port, isRunning, lastError, chatState.IsReady);
     }
 
     private string? Start()
     {
         try
         {
-            _cts = new CancellationTokenSource();
+            _cts      = new CancellationTokenSource();
             _listener = new HttpListener();
             _listener.Prefixes.Add($"http://127.0.0.1:{_currentPort}/");
             _listener.Start();
+            _mcpSse   = new McpSseServer(Dispatch);
             _serverTask = Task.Run(() => RequestLoop(_cts.Token), _cts.Token);
             return null;
         }
@@ -120,7 +157,7 @@ public class MCPBridgeServer
         }
     }
 
-    private void HandleRequest(HttpListenerContext context)
+    private async Task HandleRequest(HttpListenerContext context)
     {
         var request = context.Request;
         var response = context.Response;
@@ -130,13 +167,32 @@ public class MCPBridgeServer
             var path = request.Url?.AbsolutePath ?? "/";
             var method = request.HttpMethod;
 
+            // ── MCP routes ────────────────────────────────────────────────────────
+            // Streamable HTTP (POST /mcp) — Open WebUI + 2025+ MCP clients
+            if (path == "/mcp" && (method == "POST" || method == "OPTIONS"))
+            {
+                await _mcpSse!.HandleStreamableHttpAsync(context, _cts?.Token ?? CancellationToken.None);
+                return;
+            }
+            // HTTP/SSE legacy transport (kept for compatibility)
+            if (path == "/mcp/sse" && method == "GET")
+            {
+                await _mcpSse!.HandleSseAsync(context, _cts?.Token ?? CancellationToken.None);
+                return;
+            }
+            if (path == "/mcp/message" && method == "POST")
+            {
+                await _mcpSse!.HandleMessageAsync(context, _cts?.Token ?? CancellationToken.None);
+                return;
+            }
+
             object? result = (method, path) switch
             {
                 // ── Status ──
                 ("GET", "/api/ping") => new
                 {
                     status = "ok",
-                    server = "VL.MCP.Bridge",
+                    server = "VL.MCP",
                     version = "0.2.0",
                     timestamp = DateTimeOffset.UtcNow
                 },
@@ -179,6 +235,14 @@ public class MCPBridgeServer
 
                 // ── Debug ──
                 ("GET", "/api/debug") => HandleDebug(),
+                ("GET", "/api/chat-state") => new
+                {
+                    chatEnabled   = _chatEnabled,
+                    prevOpenChat  = _prevOpenChat,
+                    chatHostReady = _chatHost is not null,
+                    chatLastError = _chatHost?.LastError,
+                    chatIsReady   = _chatHost?.IsReady ?? false,
+                },
                 ("GET", "/api/debug/explore") => HandleExplore(request),
 
                 _ => null
@@ -999,12 +1063,14 @@ public class MCPBridgeServer
     private void Stop()
     {
         _cts?.Cancel();
-        try { _listener?.Stop(); } catch { }
+        try { _listener?.Stop(); }  catch { }
         try { _listener?.Close(); } catch { }
-        _listener = null;
+        _listener   = null;
         _cts?.Dispose();
-        _cts = null;
+        _cts        = null;
         _serverTask = null;
+        _chatHost?.Dispose();
+        _chatHost   = null;
     }
 
     // ── Debug (kept from before) ─────────────────────────────────────────────────
@@ -1142,6 +1208,90 @@ public class MCPBridgeServer
         catch (Exception ex) { info["exception"] = ex.Message; }
         return info;
     }
+
+    // ── MCP tool dispatch (used by McpSseServer) ──────────────────────────────
+
+    private string Dispatch(string toolName, string paramsJson)
+    {
+        try
+        {
+            using var doc  = System.Text.Json.JsonDocument.Parse(
+                string.IsNullOrWhiteSpace(paramsJson) ? "{}" : paramsJson);
+            var p = doc.RootElement;
+
+            string Str(string key, string def = "") =>
+                p.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String
+                    ? v.GetString() ?? def : def;
+            bool Bool(string key, bool def = false) =>
+                p.TryGetProperty(key, out var v)
+                    ? v.ValueKind == JsonValueKind.True  ? true
+                    : v.ValueKind == JsonValueKind.False ? false : def
+                    : def;
+            int Int(string key, int def = 0) =>
+                p.TryGetProperty(key, out var v) && v.TryGetInt32(out var i) ? i : def;
+
+            object result = toolName switch
+            {
+                "check_bridge_connection"  => new { connected = true, runtime = new { _state.IsRunning, _state.IsPaused, _state.FrameCount, _state.UptimeSeconds } },
+                "get_running_documents"    => _state.Documents,
+                "get_vvvv_errors"          => new { summary = $"{_state.Errors.Count(e => e.Severity == "Error")} error(s)", errors = _state.Errors },
+                "get_vvvv_state"           => new { _state.IsRunning, _state.IsPaused, _state.FrameCount, _state.UptimeSeconds },
+                "get_vvvv_log"             => new { count = _logCapture.GetEntries(Int("limit", 50), Str("severity") is "" ? null : Str("severity")).Count, entries = _logCapture.GetEntries(Int("limit", 50), Str("severity") is "" ? null : Str("severity")) },
+                "get_open_tabs"            => HandleGetTabs(),
+                "open_document_in_vvvv"    => HandleOpenDocumentDirect(Str("filePath")),
+                "close_document_in_vvvv"   => HandleCloseDocument(Str("filePath"), Bool("save")),
+                "save_document_in_vvvv"    => HandleSaveDocumentDirect(Str("filePath")),
+                "reload_file_in_vvvv"      => HandleReloadDirect(Str("filePath")),
+                "undo_in_vvvv"             => HandleUndoDirect(),
+                "redo_in_vvvv"             => HandleRedoDirect(),
+                _                          => (object)new { error = $"Unknown tool: {toolName}" }
+            };
+
+            return JsonSerializer.Serialize(result, JsonOpts);
+        }
+        catch (Exception ex) { return JsonSerializer.Serialize(new { error = ex.Message }, JsonOpts); }
+    }
+
+    // Direct (non-HTTP) versions for MCP dispatch
+    private object HandleOpenDocumentDirect(string filePath)
+    {
+        if (!File.Exists(filePath)) return new { success = false, error = $"Not found: {filePath}" };
+        var session = GetSession();
+        if (session is null) return new { success = false, error = "Session not available" };
+        var solution = session.GetType().GetProperty("CurrentSolution")?.GetValue(session);
+        var docsEnum = solution?.GetType().GetProperty("Documents")?.GetValue(solution) as System.Collections.IEnumerable;
+        object? found = null;
+        if (docsEnum is not null)
+            foreach (var d in docsEnum)
+            {
+                var fp = d.GetType().GetProperty("FilePath")?.GetValue(d)?.ToString();
+                if (string.Equals(fp, filePath, StringComparison.OrdinalIgnoreCase)) { found = d; break; }
+            }
+        if (found is not null) { ShowDocumentOnUIThread(session, found); return new { success = true, filePath }; }
+        var load = session.GetType().GetMethod("LoadDocumentInBackground",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        if (load is not null) { PostToUIThread(() => load.Invoke(session, [filePath])); return new { success = true, filePath }; }
+        return new { success = false, error = "Could not open document" };
+    }
+    private object HandleSaveDocumentDirect(string filePath)
+    {
+        if (filePath.Equals("all", StringComparison.OrdinalIgnoreCase)) return HandleSaveAll();
+        // TODO: add HandleSaveDocument(string filePath) overload in next iteration
+        return new { success = false, error = "Use save_document_in_vvvv via the REST API for now" };
+    }
+    private object HandleCloseDocument(string filePath, bool save)
+    {
+        // TODO: add HandleCloseDocument(string filePath, bool save) overload in next iteration
+        return new { success = false, error = "Use close_document_in_vvvv via the REST API for now" };
+    }
+    private object HandleReloadDirect(string filePath)
+    {
+        if (!File.Exists(filePath)) return new { success = false, error = $"Not found: {filePath}" };
+        File.SetLastWriteTimeUtc(filePath, DateTime.UtcNow);
+        return new { success = true, filePath };
+    }
+    private object HandleUndoDirect() => HandleUndoRedo(null!, isUndo: true);
+    private object HandleRedoDirect()  => HandleUndoRedo(null!, isUndo: false);
 }
 
 internal record ReloadRequest(string? FilePath);

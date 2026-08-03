@@ -179,13 +179,13 @@ if (knowledgePath is not null)
     }
 }
 
-// --- Bridge client (connects to running vvvv if VL.MCP.Bridge is loaded) ---
+// --- Bridge client (connects to running vvvv if VL.MCP.HDE is loaded) ---
 var bridgeClient    = host.Services.GetRequiredService<BridgeClientService>();
 var bridgeAvailable = await bridgeClient.CheckAvailabilityAsync();
 if (bridgeAvailable)
     logger.LogInformation("vvvv bridge detected at localhost (live tools enabled)");
 else
-    logger.LogInformation("No vvvv bridge detected (live tools will report 'not connected' until VL.MCP.Bridge.HDE.vl is loaded in vvvv)");
+    logger.LogInformation("No vvvv bridge detected (live tools will report 'not connected' until VL.MCPHDE.vl is loaded in vvvv)");
 
 await host.RunAsync();
 
