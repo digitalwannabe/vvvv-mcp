@@ -9,10 +9,11 @@ on:
         required: false
         default: ""
 
-  # Automatic trigger on version tags: git tag v0.8.0 && git push --tags
+  # Automatic trigger on version tags: git tag v1.0.0 && git push --tags
+  # Pattern v[0-9]* avoids matching vl-* tags used for VL.MCP.HDE releases
   push:
     tags:
-      - "v*"
+      - "v[0-9]*"
 
 jobs:
   publish:
