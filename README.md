@@ -40,6 +40,85 @@ vvvv-mcp --setup   # re-run if paths changed
 
 ---
 
+## Help to Improve
+
+- Anytime the MCP does a bad job/misunderstands vvvv, you can either dump the chat log (if non-sensitive) or ask the LLM to summarize what went wrong and how it would improve the MCP, then file it as an issue.
+- When you create video-based tutorials, create a good transcript which we can add to the MCP's knowledge base.
+
+---
+
+## VL.MCP.HDE — In-editor AI assistant *(experimental preview)*
+
+> <span style="color:red"><strong>Status:</strong> experimental preview — breaking changes expected. While the infrastructure itself is ok, the mcp still needs to improve a lot before this becomes truly useable. Don't expect any wonders (yet).</span>
+
+`VL.MCP.HDE` is a companion vvvv gamma editor extension that adds two features:
+
+| Feature | Shortcut | What it does |
+|---|---|---|
+| **Bridge** | `Alt+B` toggle | HTTP server on `localhost:7123` — exposes the live vvvv session to any external MCP client (VS Code + Kilo, Claude Desktop, etc.) |
+| **Chat** | `Alt+C` toggle | Launches [Open WebUI](https://openwebui.com) as a chat panel directly inside the vvvv editor, pre-connected to the bridge's MCP tools |
+
+### Install
+
+```powershell
+# Install via vvvv's NuGet package manager, or add to startup args:
+nuget install VL.MCP.HDE
+```
+
+In your vvvv startup arguments:
+```
+--package-repositories "path/to/packages" --editable-packages "VL.MCP.HDE"
+```
+
+Dependencies (installed automatically via NuGet):
+- `VL.CoreLib` — vvvv core
+- `VL.HDE` — editor extension API
+- `VL.CEF` + `VL.CEF.Skia` — Chromium browser rendering (for Chat mode)
+
+### Bridge mode (`Alt+B`)
+
+Starts an HTTP server inside vvvv at `localhost:7123`. External MCP clients connect to it directly. The bridge exposes:
+- All 12 live-editor tools (documents, errors, log, open/save/reload, undo/redo)
+- MCP/SSE endpoint (`/mcp/sse`) for legacy clients
+- **MCP Streamable HTTP endpoint** (`/mcp`) for Open WebUI and 2025+ clients
+
+Configure your external MCP client (once):
+```json
+{
+  "mcpServers": {
+    "vvvv-bridge": {
+      "command": "dotnet",
+      "args": ["run", "--project", "path/to/VvvvMcp"]
+    }
+  }
+}
+```
+Or point directly at the running bridge: `http://localhost:7123/mcp`
+
+### Chat mode (`Alt+C`) — powered by [Open WebUI](https://openwebui.com)
+
+Launches [Open WebUI](https://github.com/open-webui/open-webui) as an embedded browser panel inside vvvv. Open WebUI handles the full LLM chat interface; the vvvv MCP tools are automatically registered.
+
+**Requirements:**
+- [`uv`](https://docs.astral.sh/uv/) must be installed: `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`
+- An LLM endpoint — [Ollama](https://ollama.com) (local) or any OpenAI-compatible API
+
+**First start:** `uv` downloads and installs Open WebUI (~500 MB, one-time). Subsequent starts are fast (~10 s). Chat history, settings, and uploaded documents are stored in `%LOCALAPPDATA%\vvvv-mcp\openwebui-data\`.
+
+**Activating the vvvv tools in chat:**
+The vvvv MCP server (`http://localhost:7123/mcp`) is automatically registered in Open WebUI on first launch. To use it in a conversation:
+- Click the **Tool** button in the chat input bar → toggle on **vvvv-mcp**
+
+To activate tools by default for a model (so you don't need to click `+` every time):
+1. Open WebUI → **Workspace → Models**
+2. Edit the model you want to use
+3. Under **Tools**, enable **vvvv-mcp**
+4. Save — tools will now be active in every new chat with that model
+
+**Attribution:** Chat mode is powered by [Open WebUI](https://github.com/open-webui/open-webui) (MIT License). Open WebUI is an independent project and is not affiliated with this repository.
+
+---
+
 ## Tools
 
 ### Node Catalog
@@ -128,85 +207,6 @@ vvvv-mcp --setup   # re-run if paths changed
 | `vvvv://knowledge/troubleshooting` | Common errors: pin order, missing ImportAsIs, shader mistakes, runtime issues |
 | `vvvv://knowledge/packages` | 230 curated packages from Libraries.xml, organized by category |
 | `vvvv://knowledge/gray-book/*` | Official Gray Book — language, extending, libraries, HDE, best-practice, getting-started |
-
----
-
-## VL.MCP.HDE — In-editor AI assistant *(experimental preview)*
-
-> **Status:** experimental preview — breaking changes expected.
-
-`VL.MCP.HDE` is a companion vvvv gamma editor extension that adds two features:
-
-| Feature | Shortcut | What it does |
-|---|---|---|
-| **Bridge** | `Alt+B` toggle | HTTP server on `localhost:7123` — exposes the live vvvv session to any external MCP client (VS Code + Kilo, Claude Desktop, etc.) |
-| **Chat** | `Alt+C` toggle | Launches [Open WebUI](https://openwebui.com) as a chat panel directly inside the vvvv editor, pre-connected to the bridge's MCP tools |
-
-### Install
-
-```powershell
-# Install via vvvv's NuGet package manager, or add to startup args:
-nuget install VL.MCP.HDE
-```
-
-In your vvvv startup arguments:
-```
---package-repositories "path/to/packages" --editable-packages "VL.MCP.HDE"
-```
-
-Dependencies (installed automatically via NuGet):
-- `VL.CoreLib` — vvvv core
-- `VL.HDE` — editor extension API
-- `VL.CEF` + `VL.CEF.Skia` — Chromium browser rendering (for Chat mode)
-
-### Bridge mode (`Alt+B`)
-
-Starts an HTTP server inside vvvv at `localhost:7123`. External MCP clients connect to it directly. The bridge exposes:
-- All 12 live-editor tools (documents, errors, log, open/save/reload, undo/redo)
-- MCP/SSE endpoint (`/mcp/sse`) for legacy clients
-- **MCP Streamable HTTP endpoint** (`/mcp`) for Open WebUI and 2025+ clients
-
-Configure your external MCP client (once):
-```json
-{
-  "mcpServers": {
-    "vvvv-bridge": {
-      "command": "dotnet",
-      "args": ["run", "--project", "path/to/VvvvMcp"]
-    }
-  }
-}
-```
-Or point directly at the running bridge: `http://localhost:7123/mcp`
-
-### Chat mode (`Alt+C`) — powered by [Open WebUI](https://openwebui.com)
-
-Launches [Open WebUI](https://github.com/open-webui/open-webui) as an embedded browser panel inside vvvv. Open WebUI handles the full LLM chat interface; the vvvv MCP tools are automatically registered.
-
-**Requirements:**
-- [`uv`](https://docs.astral.sh/uv/) must be installed: `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`
-- An LLM endpoint — [Ollama](https://ollama.com) (local) or any OpenAI-compatible API
-
-**First start:** `uv` downloads and installs Open WebUI (~500 MB, one-time). Subsequent starts are fast (~10 s). Chat history, settings, and uploaded documents are stored in `%LOCALAPPDATA%\vvvv-mcp\openwebui-data\`.
-
-**Activating the vvvv tools in chat:**
-The vvvv MCP server (`http://localhost:7123/mcp`) is automatically registered in Open WebUI on first launch. To use it in a conversation:
-- Click the **`+`** button in the chat input bar → toggle on **vvvv-mcp**
-
-To activate tools by default for a model (so you don't need to click `+` every time):
-1. Open WebUI → **Workspace → Models**
-2. Edit the model you want to use
-3. Under **Tools**, enable **vvvv-mcp**
-4. Save — tools will now be active in every new chat with that model
-
-**Attribution:** Chat mode is powered by [Open WebUI](https://github.com/open-webui/open-webui) (MIT License). Open WebUI is an independent project and is not affiliated with this repository.
-
----
-
-## Help to Improve
-
-- Anytime the MCP does a bad job/misunderstands vvvv, you can either dump the chat log (if non-sensitive) or ask the LLM to summarize what went wrong and how it would improve the MCP, then file it as an issue.
-- When you create video-based tutorials, create a good transcript which we can add to the MCP's knowledge base.
 
 ---
 

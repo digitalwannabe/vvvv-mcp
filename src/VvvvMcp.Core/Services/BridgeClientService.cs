@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace VvvvMcp.Core.Services;
 
 /// <summary>
-/// Client that connects to the VL.MCP.Bridge running inside a live vvvv instance.
+/// Client that connects to the VL.MCP.HDE running inside a live vvvv instance.
 /// Provides access to editor state, compilation errors, and live values.
 /// Degrades gracefully when the bridge is not available.
 /// </summary>
