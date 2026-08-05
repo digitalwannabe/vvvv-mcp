@@ -343,6 +343,24 @@ internal class BridgeState
             Error = error
         };
     }
+
+    // ── Live pin value (editor API path) ──────────────────────────────────────
+
+    private readonly LivePinWriter _pinWriter = new();
+
+    /// <summary>
+    /// Sets a pin's default value on the LIVE model via ISolution.SetPinValue + Confirm —
+    /// undo-integrated, no file reload. documentId is the .vl Document Id, elementId the
+    /// pin's XML Id.
+    /// </summary>
+    public async Task<object> SetPinValueLiveAsync(
+        string documentId, string elementId, string pinName, string value, string? typeHint, AppHost? appHost)
+    {
+        Initialize();
+        if (_failed || _session is null)
+            return new { success = false, error = "VL session unavailable" };
+        return await _pinWriter.SetPinValueAsync(documentId, elementId, pinName, value, typeHint, appHost);
+    }
 }
 
 /// <summary>Result of a document reload-from-disk operation.</summary>
@@ -353,7 +371,6 @@ public class DocumentReloadResult
     public bool HadUnsavedChanges { get; set; }
     public string? Error { get; set; }
 }
-
 // ── Response DTOs ──────────────────────────────────────────────────────────────
 
 /// <summary>Info about an open document in vvvv.</summary>

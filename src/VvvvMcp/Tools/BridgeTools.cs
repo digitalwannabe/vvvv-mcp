@@ -294,6 +294,26 @@ public class BridgeTools
         return JsonSerializer.Serialize(result, JsonOpts);
     }
 
+    [McpServerTool(Name = "set_value_live"), Description(
+        "Set a pin's default value on the LIVE running patch via the vvvv editor API — " +
+        "undo-integrated (Ctrl+Z works) and no file reload flash. The document must be open in vvvv. " +
+        "Target the NODE's elementId and address the pin by NAME. " +
+        "Use for live value tweaking; use build_patch for structural edits. " +
+        "Requires the VL.MCP.HDE (bridge ≥ 0.3).")]
+    public async Task<string> SetValueLive(
+        [Description("The NODE's element id (from read_patch — the node, NOT the pin)")] string elementId,
+        [Description("Pin name (e.g. 'Period', 'Filter Time')")] string pinName,
+        [Description("Value to set as string — parsed to the pin's type (e.g. '0.5', 'true', 'hello')")] string value,
+        [Description("Optional: .vl file path to resolve the document id")] string? filePath = null,
+        [Description("Optional type hint: 'float','double','int','bool','string'")] string? typeHint = null)
+    {
+        if (!await _bridge.CheckAvailabilityAsync())
+            return NoBridgeMessage();
+
+        var result = await _bridge.SetPinValueLiveAsync(elementId, pinName, value, filePath: filePath, typeHint: typeHint);
+        return JsonSerializer.Serialize(result, JsonOpts);
+    }
+
     // ── Log / Console ─────────────────────────────────────────────────────────
 
     [McpServerTool(Name = "get_vvvv_log"), Description(

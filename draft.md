@@ -658,12 +658,22 @@ graphify to understand patches faster?
 
 
 would it help to also ship a skill which tells the mcp how to use its tools? over-engineered?
-would it help to also ship a skill which tells the mcp how to use its tools? over-engineered?
+
+
+
+
+
+- performance checks: 60fps is the goal (usually)
+- gpu profiling
+
+- small robot showing where its working....?
+- setting pins, okay, setting io-boxes too?
+- feedback: node tooltips/outputs, render windows (live via spout for future stream analysis?)
+
 
 ---
 
 # 2026-08-04 — big quality/intelligence/performance session (DONE)
-
 
 
 Everything below is implemented, built green, and benchmarked against the live instance.
@@ -671,24 +681,7 @@ Commits stay LOCAL until the release with the new license.
 
 
 
-Hey @digitalwannabe! super cool to see what you have built. I did not get a chance to run it yet but by the shape of the repo it looks quite feature rich already, especially the knowledge and vvvv-context endpoints available to the agent. I think that direction is really promising in reducing the time agents spend theorizing about VL patching tasks.
 
-I may have a useful thread for the write functionality: a few weeks ago I have built a similar prototype with read and write tools for vl files. Works quite well already, although it is still very slow.
-
-Editing a patch works by placing operation requests (placeNode, placePad, connectPins, etc) using a defined json schema into an inbox. These operations are then picked up by an execution thread inside an HDE Extension and applied to the patch using the public editor APIs.
-
-I did not get around to polishing it yet so it is in rough shape, but there may be some helpful ideas or insights in there. Feel free to poke around in the repo, if you find anything useful I am happy to contribute it :)
-
-We discussed this prototype at Link and compared it to @kopffarben’s MCP, seems like we all landed on similar implementation shapes. Seeing that your project now joins the list of work-in-progress MCP connectors, it might be worth consolidating our efforts into one really capable package at some point.
-
-Let me know what you think of this, cheers!
-
-https://github.com/prt-prt/VL.Agent
-
-
-- performance checks: 60fps is the goal (usually)
-
-- small robot showing where its working....?
 
 
 
@@ -877,3 +870,53 @@ dispose nodes on recompile) — dev-loop-only issue, not a user scenario.
 **Bridge is confirmed 100% independent of chat** (fully functional with OWUI down: ping,
 state, documents, live node catalog, build_patch). The old "only works when chat runs" was
 the pre-IDisposable port-hostage bug.
+
+---
+
+# 2026-08-05 (3) — editor-API live patching (reviewed prt-prt/VL.Agent)
+
+Reviewed https://github.com/prt-prt/VL.Agent after his forum message. His claim is TRUE:
+there IS a public editor API (earlier "XML is the only way" was wrong):
+
+- **`VL.Lang.PublicAPI.SessionNodes`** (public static, **in VL.Core.dll** which we reference!):
+  `.CurrentSolution : ISolution` — the editor's recorder-backed live solution.
+- **`VL.Lang.PublicAPI.ISolution.SetPinValue(UniqueId node, string pin, object value)`** +
+  **`Confirm(SolutionUpdateKind)`** — set a pin default live, committed as an undoable step.
+- **`VL.Model.ModelExtensions`** (huge public static in VL.Lang.dll): AddNode, AddChild,
+  ReplaceDescendent, MakeCurrent (undo-integrated commits), BatchUpdate…
+- **`VL.HDE.API`** (static): LoadedDocuments, CurrentSelection, ActiveLiveCanvasStream.
+
+Mechanism: the Solution is IMMUTABLE; edits chain into a new solution, MakeCurrent/Confirm
+commits it = one undo step. His inbox = a file mailbox + ProcessNode thread (≈ our bridge's
+SynchronizationContext.Post, so we don't need it). His admitted limits: "very slow",
+needs the doc open AND FOCUSED, non-atomic, paste racy.
+
+**Decision (hybrid):** keep XML+reload as the PRIMARY write path (build_patch: atomic, fast,
+focus-independent, proven). Borrow the ONE clear editor-API win:
+
+- ✅ DONE: **`set_value_live`** — POST /api/pin/set (LivePinWriter.cs) + MCP tool. Sets a pin
+  default on the LIVE patch, undo-integrated (Ctrl+Z works — verified), no reload flash.
+  Verified live: LFO Period set to 10, document went isChanged:true, undo reverted it.
+
+**The working recipe (hard-won — 3 bugs + 1 wrong API before it landed):**
+1. Target the **NODE's elementId**, address the pin **by name** — `SetPinValue(nodeId, "Period", v)`.
+   (I initially passed the pin's elementId as the node id — no-op.)
+2. Use **`DevEnvHost.CurrentSolution`** (the MODEL solution, contains ALL open documents) —
+   NOT `SessionNodes.CurrentSolution` (a recorder scoped to the ACTIVE canvas only; its
+   GetDescendent can't find other documents' elements → silent no-op).
+3. The edit: `element = solution.GetDescendent(uid)` → find pin by name →
+   `ctv = CompileTimeValue.From(value, wrapNull:true, uid, clrType)` → `pin.WithValue(ctv)` →
+   `ModelExtensions.ReplaceDescendent(solution, newPin)` (GENERIC — close with solution's type) →
+   `ModelExtensions.MakeCurrent(next, kind, canvas)` on the UI thread.
+4. Update kind = **`CommitToValue | UpdateUIAndRuntime`** — NOT AffectCompilation (that does
+   NOT commit pin values). This was the bug that made everything "succeed" but change nothing.
+
+**More to explore here (not done yet):**
+- `ModelExtensions.AddNode` + `MakeCurrent` for UNDO-INTEGRATED node insertion on open docs
+  (opt-in mode of build_patch; his per-element commits are slower + non-atomic vs our one XML write).
+- Reading live pin values back properly (CompileTimeValue unwrap for before/after display).
+- `pad.WithValue` vs node-input-pin default — pads have a separate path (associated property /
+  data channel) for IOBox values.
+- His graph-transaction schema vs our build_patch spec — nearly identical shape; we're
+  converging. Consolidation with prt-prt + kopffarben's MCP was floated on the forum.
+- AddNode symbol resolution via `resolver.GetCandidates` (editor-grade) vs our live registry.

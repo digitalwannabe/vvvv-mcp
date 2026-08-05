@@ -123,6 +123,29 @@ enumerables; `&methods=true` lists methods; `&take=n` extends item listing (defa
 - `SolutionUpdateKind` (AffectCompilation, UpdateUIOnly, …) drives `session.UpdateAsync`
   for model-level edits — not needed for file-based edits.
 
+## 6b. Live model editing (the public editor API — VERIFIED WORKING)
+
+There IS a public editor API (not just XML). Key types (all in **VL.Core.dll** + VL.Lang.dll,
+public): `VL.Lang.PublicAPI.SessionNodes` (static), `VL.Lang.PublicAPI.ISolution`
+(SetPinValue/Confirm), `VL.Model.ModelExtensions` (static: AddNode, ReplaceDescendent,
+MakeCurrent, BatchUpdate…), `VL.HDE.API` (static editor state), `VL.Lang.DevEnvHost.Instance`.
+
+**Setting a pin value live (undo-integrated, no reload) — the working recipe:**
+1. Target the **NODE's elementId**, address the pin **by name**.
+2. Use **`DevEnvHost.CurrentSolution`** (model solution — contains ALL open documents),
+   NOT `SessionNodes.CurrentSolution` (recorder scoped to the ACTIVE canvas only).
+3. `element = solution.GetDescendent(new UniqueId(docId, elementId, 0))` → find pin by name →
+   `ctv = CompileTimeValue.From(value, wrapNull:true, uid, clrType)` → `pin.WithValue(ctv)` →
+   `ModelExtensions.ReplaceDescendent(solution, newPin)` (GENERIC: close with solution's type) →
+   `ModelExtensions.MakeCurrent(next, SolutionUpdateKind.CommitToValue | SolutionUpdateKind.UpdateUIAndRuntime, canvas)`
+   on the vvvv main thread (AppHost.SynchronizationContext).
+4. Update kind MUST be `CommitToValue | UpdateUIAndRuntime` — `AffectCompilation` does NOT
+   commit pin values (calls succeed but nothing changes).
+
+Caveats learned: SolutionRecorder-scoped APIs (`SessionNodes.CurrentSolution`) only see the
+active canvas; `ReplaceDescendent<TContainer>` needs `MakeGenericMethod(solutionType)`;
+element ids in a saved unmodified document match the live model (safe to read from the .vl).
+
 ## 7. Chat host lifecycle (Alt+C)
 
 - Open WebUI started via `uv run open-webui serve`, data dir `%LOCALAPPDATA%\vvvv-mcp\open-webui-data`.

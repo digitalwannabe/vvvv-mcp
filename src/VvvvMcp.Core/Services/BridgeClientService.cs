@@ -275,6 +275,26 @@ public class BridgeClientService : IDisposable
         return await GetAsync<LiveNodeStatsResponse>("/api/nodes/stats");
     }
 
+    /// <summary>
+    /// Set a pin's default value on the LIVE running patch via the editor API
+    /// (undo-integrated, no reload). documentId resolved from filePath when only that is given.
+    /// </summary>
+    public async Task<object?> SetPinValueLiveAsync(
+        string elementId, string pinName, string value,
+        string? documentId = null, string? filePath = null, string? typeHint = null)
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["elementId"] = elementId,
+            ["pinName"] = pinName,
+            ["value"] = value
+        };
+        if (!string.IsNullOrEmpty(documentId)) payload["documentId"] = documentId;
+        if (!string.IsNullOrEmpty(filePath)) payload["filePath"] = filePath;
+        if (!string.IsNullOrEmpty(typeHint)) payload["typeHint"] = typeHint;
+        return await PostAsync<object>("/api/pin/set", payload);
+    }
+
     // ── Internal helpers ──────────────────────────────────────────────────
 
     private async Task<T?> GetAsync<T>(string path) where T : class

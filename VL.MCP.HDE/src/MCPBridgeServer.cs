@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
 using VL.Core;
 using VL.Core.Import;
@@ -273,6 +274,7 @@ internal static class BridgeVersion
                 ("POST", "/api/documents/save") => HandleSaveDocument(request),
                 ("POST", "/api/documents/save-all") => HandleSaveAll(),
                 ("POST", "/api/reload") => HandleReload(request),
+                ("POST", "/api/pin/set") => HandleSetPinValue(request),
 
                 // ── Editor / Tabs ──
                 ("GET", "/api/tabs") => HandleGetTabs(),
@@ -750,6 +752,49 @@ internal static class BridgeVersion
         // 2. Not open in the session — touch the file as a fallback
         File.SetLastWriteTimeUtc(filePath, DateTime.UtcNow);
         return new { success = true, filePath, method = "touch (document not open in session)" };
+    }
+
+    /// <summary>
+    /// POST /api/pin/set — set a pin's default value on the LIVE model (editor API,
+    /// undo-integrated, no reload). Body: { elementId, pinName, value, documentId?,
+    /// filePath?, typeHint? }. documentId is resolved from filePath when only that is given.
+    /// </summary>
+    private object HandleSetPinValue(HttpListenerRequest request)
+    {
+        try
+        {
+            var body = ReadBody(request);
+            using var jsonDoc = JsonDocument.Parse(body);
+            var root = jsonDoc.RootElement;
+
+            string? Str(string key) =>
+                root.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
+            var elementId = Str("elementId");
+            var pinName = Str("pinName");
+            var value = Str("value");
+            var documentId = Str("documentId");
+            var filePath = Str("filePath");
+            var typeHint = Str("typeHint");
+
+            if (string.IsNullOrEmpty(elementId) || string.IsNullOrEmpty(pinName) || value is null)
+                return new { success = false, error = "elementId, pinName and value are required" };
+
+            // Resolve documentId from the .vl file's Document Id when only filePath is given
+            if (string.IsNullOrEmpty(documentId) && !string.IsNullOrEmpty(filePath) && File.Exists(filePath))
+            {
+                try { documentId = XDocument.Load(filePath).Root?.Attribute("Id")?.Value; } catch { }
+            }
+            if (string.IsNullOrEmpty(documentId))
+                return new { success = false, error = "documentId is required (or pass filePath to resolve it)" };
+
+            return _state.SetPinValueLiveAsync(documentId, elementId, pinName, value, typeHint, _nodeContext?.AppHost)
+                         .GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            return new { success = false, error = ex.Message };
+        }
     }
 
     // ── Log/Console ──────────────────────────────────────────────────────────────

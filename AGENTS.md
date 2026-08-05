@@ -56,6 +56,10 @@ Bridge (VL.MCP.HDE/src):
   (`Document.ReloadAsync`).
 - Packages load lazily: a pack's nodes appear in the live registry only after a document
   referencing it is in the solution.
+- **Live pin edit** (`set_value_live`): target the NODE's elementId + pin NAME, use
+  `DevEnvHost.CurrentSolution` (NOT `SessionNodes.CurrentSolution` — active-canvas-scoped),
+  `ReplaceDescendent` (close the generic) + `MakeCurrent(CommitToValue | UpdateUIAndRuntime)`.
+  `AffectCompilation` does NOT commit pin values.
 
 ## Build & test
 

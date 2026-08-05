@@ -15,7 +15,7 @@ incorporated here by reference).
 
 **Commercial** means: any use by or on behalf of a business, paid client work,
 internal business tooling, or products/services offered commercially.
-Contact: digital.wannabe@gmail.com
+Contact: digital.wannabe at gmail.com
 
 
 ## Third-party components
