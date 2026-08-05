@@ -163,21 +163,41 @@ internal class BridgeState
         try
         {
             var msgType = msg.GetType();
-            var text = msgType.GetProperty("What")?.GetValue(msg)?.ToString()
-                    ?? msgType.GetProperty("Message")?.GetValue(msg)?.ToString()
-                    ?? msgType.GetProperty("Text")?.GetValue(msg)?.ToString()
-                    ?? msg.ToString();
-            var severity = msgType.GetProperty("Severity")?.GetValue(msg)?.ToString()
-                        ?? msgType.GetProperty("Kind")?.GetValue(msg)?.ToString()
-                        ?? "Error";
-            var location = msgType.GetProperty("Location")?.GetValue(msg)?.ToString()
-                        ?? msgType.GetProperty("Where")?.GetValue(msg)?.ToString();
+
+            // VL.Lang.Message uses public FIELDS (What/Why/How/Location/Severity),
+            // other message types use properties — probe both.
+            string? Read(string name) =>
+                (msgType.GetProperty(name)?.GetValue(msg)
+              ?? msgType.GetField(name)?.GetValue(msg))?.ToString();
+
+            var text = Read("What") ?? Read("Message") ?? Read("Text") ?? msg.ToString();
+            var why  = Read("Why");
+            var how  = Read("How");
+            var severity = Read("Severity") ?? Read("Kind") ?? "Error";
+
+            // Location is a UniqueId { DocumentId, ElementId } — the element id
+            // matches the node/pin Id in the .vl XML, enabling exact error→node mapping.
+            string? documentId = null, elementId = null, locationStr = null;
+            var locObj = msgType.GetProperty("Location")?.GetValue(msg)
+                      ?? msgType.GetField("Location")?.GetValue(msg)
+                      ?? msgType.GetProperty("Where")?.GetValue(msg);
+            if (locObj is not null)
+            {
+                var locType = locObj.GetType();
+                documentId = locType.GetProperty("DocumentId")?.GetValue(locObj)?.ToString();
+                elementId  = locType.GetProperty("ElementId")?.GetValue(locObj)?.ToString();
+                locationStr = locObj.ToString();
+            }
 
             return new ErrorInfo
             {
                 Message = text ?? "",
+                Why = string.IsNullOrWhiteSpace(why) ? null : why,
+                How = string.IsNullOrWhiteSpace(how) ? null : how,
                 Severity = severity,
-                Location = location,
+                Location = locationStr,
+                DocumentId = documentId,
+                ElementId = elementId,
                 Source = source
             };
         }
@@ -249,6 +269,89 @@ internal class BridgeState
 
         Packages = packages;
     }
+
+    /// <summary>
+    /// Reloads an OPEN document from disk via the official VL API (Document.ReloadAsync).
+    /// This updates the in-memory model and the editor UI — unlike touching the file,
+    /// which vvvv does not reliably pick up. Marshals to the vvvv main thread.
+    /// </summary>
+    public async Task<DocumentReloadResult> ReloadDocumentFromDiskAsync(string filePath, AppHost? appHost)
+    {
+        Initialize();
+        if (_failed || _session is null)
+            return new DocumentReloadResult { Error = "VL session unavailable" };
+
+        // Find the open document by file path
+        object? doc = null;
+        try
+        {
+            var solution = _currentSolutionProp?.GetValue(_session);
+            var docsEnum = _docsProp?.GetValue(solution) as IEnumerable;
+            foreach (var d in docsEnum ?? Enumerable.Empty<object>())
+            {
+                var fp = d.GetType().GetProperty("FilePath")?.GetValue(d)?.ToString();
+                if (string.Equals(fp, filePath, StringComparison.OrdinalIgnoreCase)) { doc = d; break; }
+            }
+        }
+        catch (Exception ex)
+        {
+            return new DocumentReloadResult { Error = ex.Message };
+        }
+
+        if (doc is null)
+            return new DocumentReloadResult(); // not open in the session
+
+        var hadUnsavedChanges = doc.GetType().GetProperty("IsChanged")?.GetValue(doc) as bool? ?? false;
+        var reloadMethod = doc.GetType().GetMethod("ReloadAsync");
+        if (reloadMethod is null)
+            return new DocumentReloadResult { Found = true, Error = "Document.ReloadAsync not found" };
+
+        // Marshal onto the vvvv main thread (VL model APIs are main-thread only)
+        var syncCtx = appHost?.SynchronizationContext;
+        var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        if (syncCtx is not null)
+        {
+            syncCtx.Post(async _ =>
+            {
+                try
+                {
+                    if (reloadMethod.Invoke(doc, new object[] { true }) is Task t)
+                        await t;
+                    tcs.SetResult(null);
+                }
+                catch (Exception ex) { tcs.SetResult(ex.GetBaseException().Message); }
+            }, null);
+        }
+        else
+        {
+            try
+            {
+                if (reloadMethod.Invoke(doc, new object[] { true }) is Task t)
+                    await t;
+                tcs.SetResult(null);
+            }
+            catch (Exception ex) { tcs.SetResult(ex.GetBaseException().Message); }
+        }
+
+        var error = await tcs.Task;
+        return new DocumentReloadResult
+        {
+            Found = true,
+            Reloaded = error is null,
+            HadUnsavedChanges = hadUnsavedChanges,
+            Error = error
+        };
+    }
+}
+
+/// <summary>Result of a document reload-from-disk operation.</summary>
+public class DocumentReloadResult
+{
+    public bool Found { get; set; }
+    public bool Reloaded { get; set; }
+    public bool HadUnsavedChanges { get; set; }
+    public string? Error { get; set; }
 }
 
 // ── Response DTOs ──────────────────────────────────────────────────────────────
@@ -268,8 +371,14 @@ public class DocumentInfo
 public class ErrorInfo
 {
     public string Message { get; set; } = "";
+    public string? Why { get; set; }
+    public string? How { get; set; }
     public string? Severity { get; set; }
     public string? Location { get; set; }
+    /// <summary>Id of the .vl Document containing the faulty element (matches the XML Document Id).</summary>
+    public string? DocumentId { get; set; }
+    /// <summary>Id of the faulty node/pin (matches the Id attribute in the .vl XML).</summary>
+    public string? ElementId { get; set; }
     public string? Source { get; set; }
 }
 

@@ -27,6 +27,9 @@ internal class McpChatHost : IDisposable
 
     public bool    IsReady   => _ready;
     public string? LastError => _lastError;
+    /// <summary>Human-readable status for the placeholder page.</summary>
+    public string  Status    => _lastError ?? (_ready ? "ready" : "setting up…");
+    public string  ChatUrl   => $"http://localhost:{_chatPort}";
 
     public (bool IsReady, bool IsStarting, string? LastError, string ChatUrl) Update(
         bool enabled, int chatPort = 7125, int bridgePort = 7123)
@@ -38,17 +41,28 @@ internal class McpChatHost : IDisposable
         {
             _currentEnabled = true;
             _lastError      = null;
-            _ready          = false;
-            _cts            = new CancellationTokenSource();
-            _startupTask    = Task.Run(() => StartAsync(_cts.Token));
+            // Fast path: process (started or adopted) still alive → nothing to do,
+            // the window just re-opens on the existing server.
+            if (_process is { HasExited: false } && _ready)
+            {
+                _startupTask = Task.CompletedTask;
+            }
+            else
+            {
+                _cts         = new CancellationTokenSource();
+                _ready       = false;
+                _startupTask = Task.Run(() => StartAsync(_cts.Token));
+            }
         }
         else if (!enabled && _currentEnabled)
         {
             _currentEnabled = false;
-            _cts?.Cancel();
-            KillProcess();
-            _ready       = false;
-            _startupTask = null;
+            // IMPORTANT: do NOT cancel _cts or the startup task here.
+            // The "Open Chat" signal is a one-frame bang (HoldLatest.On Data), so
+            // enabled drops to false the very next frame — cancelling would abort
+            // the Open WebUI startup mid-flight (this was the bug that left the
+            // placeholder polling forever). The server, once started, lives until
+            // vvvv exits (Dispose). Only the window toggles with the signal.
         }
 
         if (_startupTask?.IsFaulted == true && _lastError is null)
@@ -62,6 +76,38 @@ internal class McpChatHost : IDisposable
 
     private async Task StartAsync(CancellationToken ct)
     {
+        // Machine-wide named mutex: serializes Open WebUI startups across concurrent
+        // Alt+C presses AND HDE hot-recompiles (a new assembly = fresh instance lock,
+        // but the named mutex survives). After a previous start completes, the next
+        // caller ADOPTS the now-running instance instead of spawning a duplicate.
+        using var mutex = new Mutex(initiallyOwned: false, @"Global\vvvv-mcp-chat-start");
+        var acquired = false;
+        try
+        {
+            try { acquired = mutex.WaitOne(TimeSpan.FromMinutes(6)); }
+            catch (AbandonedMutexException) { acquired = true; } // previous holder died — we own it now
+
+            if (!acquired)
+            {
+                _lastError = "Timed out waiting for the Open WebUI startup lock.";
+                return;
+            }
+
+            // Adopt: a healthy Open WebUI may already be listening (previous start,
+            // orphan from an earlier vvvv run, or a start that just completed).
+            if (await TryAdoptExistingAsync(ct))
+                return;
+
+            await StartFreshAsync(ct);
+        }
+        finally
+        {
+            if (acquired) mutex.ReleaseMutex();
+        }
+    }
+
+    private async Task StartFreshAsync(CancellationToken ct)
+    {
         var uv = FindOnPath("uv.exe") ?? FindOnPath("uv");
         if (uv is null)
         {
@@ -69,8 +115,14 @@ internal class McpChatHost : IDisposable
             return;
         }
 
-        // Kill any orphaned Open WebUI process still holding the port from a previous session
-        KillProcessOnPort(_chatPort);
+        // 2. Port occupied by something that is NOT a healthy Open WebUI.
+        //    Only kill it if it looks like a stale open-webui/uv/python leftover —
+        //    never nuke foreign processes.
+        if (!KillStaleOpenWebUiOnPort(_chatPort))
+        {
+            _lastError = $"Port {_chatPort} is occupied by a non-Open-WebUI process. Free it or set VVVV_MCP_CHAT_PORT.";
+            return;
+        }
         await Task.Delay(1500, ct); // give OS time to release the socket
 
         var dataDir = Path.Combine(
@@ -123,7 +175,11 @@ internal class McpChatHost : IDisposable
         if (!_ready)
             _lastError = $"Open WebUI did not start within 5 min. Check console for [OpenWebUI] messages.";
         else if (!_mcpRegistered)
-            await RegisterMcpServerAsync(ct);
+        {
+            // Non-fatal: server is up even if MCP registration fails.
+            try { await RegisterMcpServerAsync(ct); }
+            catch (Exception ex) { Console.WriteLine($"[vvvv-mcp] MCP registration failed (non-fatal): {ex.Message}"); }
+        }
     }
 
     private async Task RegisterMcpServerAsync(CancellationToken ct)
@@ -205,9 +261,81 @@ internal class McpChatHost : IDisposable
 
     // ── Port + process cleanup ────────────────────────────────────────────────
 
-    private static void KillProcessOnPort(int port)
+    /// <summary>
+    /// If a healthy Open WebUI already answers on the chat port, adopt it instead
+    /// of starting a second instance. Returns true when adopted.
+    /// </summary>
+    private async Task<bool> TryAdoptExistingAsync(CancellationToken ct)
     {
-        // Use netstat to find the PID holding the port and kill it
+        try
+        {
+            using var resp = await Http.GetAsync($"http://127.0.0.1:{_chatPort}/", ct);
+            if (!resp.IsSuccessStatusCode) return false;
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            var looksLikeOpenWebUi =
+                body.Contains("Open WebUI", StringComparison.OrdinalIgnoreCase) ||
+                body.Contains("open-webui", StringComparison.OrdinalIgnoreCase) ||
+                body.Contains("openwebui",   StringComparison.OrdinalIgnoreCase);
+            if (!looksLikeOpenWebUi) return false;
+
+            var pid = FindPidOnPort(_chatPort);
+            if (pid > 0)
+            {
+                try
+                {
+                    _process = Process.GetProcessById(pid);
+                    _process.EnableRaisingEvents = true;
+                    _process.Exited += (_, _) =>
+                    {
+                        if (_currentEnabled) _lastError = "Open WebUI exited unexpectedly.";
+                        _ready = false;
+                    };
+                }
+                catch { }
+            }
+
+            Console.WriteLine($"[vvvv-mcp] Adopting already-running Open WebUI on port {_chatPort} (PID {pid})");
+            _ready = true;
+            if (!_mcpRegistered)
+            {
+                // Non-fatal: a failed MCP registration must not undo a successful adopt.
+                try { await RegisterMcpServerAsync(ct); }
+                catch (Exception ex) { Console.WriteLine($"[vvvv-mcp] MCP registration failed (non-fatal): {ex.Message}"); }
+            }
+            return true;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>
+    /// Kills the process listening on the port ONLY if it looks like a stale
+    /// Open WebUI leftover (python/uv process). Returns false (and kills nothing)
+    /// when a foreign process owns the port or the port is free.
+    /// </summary>
+    private bool KillStaleOpenWebUiOnPort(int port)
+    {
+        var pid = FindPidOnPort(port);
+        if (pid <= 0) return true; // port free
+
+        try
+        {
+            var proc = Process.GetProcessById(pid);
+            var name = proc.ProcessName.ToLowerInvariant();
+            var looksStale = name.Contains("python") || name.Contains("uv");
+            if (!looksStale)
+            {
+                Console.WriteLine($"[vvvv-mcp] Port {port} held by foreign process {proc.ProcessName} (PID {pid}) — not killing it.");
+                return false;
+            }
+            Console.WriteLine($"[vvvv-mcp] Killing stale Open WebUI process {proc.ProcessName} (PID {pid}) on port {port}");
+            proc.Kill(entireProcessTree: true);
+            return true;
+        }
+        catch { return true; } // process already gone
+    }
+
+    private static int FindPidOnPort(int port)
+    {
         try
         {
             var p = Process.Start(new ProcessStartInfo("netstat", "-ano")
@@ -216,27 +344,22 @@ internal class McpChatHost : IDisposable
                 RedirectStandardOutput = true,
                 CreateNoWindow         = true
             });
-            if (p is null) return;
+            if (p is null) return -1;
             var output = p.StandardOutput.ReadToEnd();
             p.WaitForExit(3000);
 
             foreach (var line in output.Split('\n'))
             {
                 if (!line.Contains($":{port} ") && !line.Contains($":{port}\t")) continue;
-                if (!line.Contains("LISTENING") && !line.Contains("ESTABLISHED")) continue;
+                if (!line.Contains("LISTENING")) continue;
                 var parts = line.Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length < 5) continue;
-                if (!int.TryParse(parts[^1], out var pid) || pid <= 0) continue;
-                try
-                {
-                    var victim = Process.GetProcessById(pid);
-                    Console.WriteLine($"[vvvv-mcp] Killing orphaned process {victim.ProcessName} (PID {pid}) on port {port}");
-                    victim.Kill(entireProcessTree: true);
-                }
-                catch { }
+                if (int.TryParse(parts[^1], out var pid) && pid > 0)
+                    return pid;
             }
         }
         catch { }
+        return -1;
     }
 
     private void KillProcess()

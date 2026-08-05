@@ -63,7 +63,7 @@ foreach ($item in @(@{Path=$GrayBookDir; Name="The-Gray-Book"}, @{Path=$SkillsDi
 New-Item -ItemType Directory -Force -Path $KnowledgeDir | Out-Null
 
 # Files the script must NEVER overwrite (vvvv-packages.md is now generated from Libraries.xml)
-$ManualFiles = @("vl-quickref.md", "vl-patterns.md")
+$ManualFiles = @("vl-quickref.md", "vl-patterns.md", "vl-building-blocks.md", "vl-common-graphs.md", "vl-project-architecture.md", "vvvv-internals-advanced.md")
 
 # Replace markdown image references with text markers
 function Convert-ImageRefs([string] $content) {
@@ -493,3 +493,4 @@ Write-Host ""
 Write-Host "To update when submodules change:"
 Write-Host "  git submodule update --remote --merge"
 Write-Host "  ./scripts/build-knowledge.ps1"
+

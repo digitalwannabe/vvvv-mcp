@@ -47,25 +47,26 @@ public class VvvvPrompts
    current node IDs, pin IDs, existing connections, and language version.
    All new links must reference IDs that exist in the patch.
 
-2. **Use the patterns resource** (step 0 above) — especially:
-   - Node reference XML (OperationCallFlag vs ProcessAppFlag)
-   - IOBox/Pad format for any new value editors
-   - Region XML if adding If/ForEach/Cache
-   - Stride/Skia/SDSL patterns if extending those systems
+2. **Build the change in ONE call with `build_patch`** — nodes + pads + links +
+   dependencies + verification in a single shot. Nodes are resolved against the
+   LIVE vvvv registry (exact pins, real types, correct hidden pins); missing
+   NuGet dependencies are added automatically; the result is reloaded in vvvv
+   and compile errors are reported back.
+   - Link endpoints accept `key.Pin Name` for new nodes AND raw pin IDs from
+     read_patch for existing nodes — so you can wire the new subgraph INTO the
+     existing patch in the same call.
+   - Pin groups auto-index: linking `scene.Child` twice creates Child + Child 2.
+   - Only fall back to `add_node`/`connect_pins` for single trivial additions.
 
-3. **Find exact node details**: call `search_nodes("NodeName")` then
-   `get_node_details("NodeName")` to confirm category, dependency, pin names.
+3. **Common graphs**: `read_knowledge("vl-common-graphs")` has pin-level link
+   structure for the recurring patterns (Stride scene, Skia layers, channels,
+   TextureFX, Fuse particles…). Prefer these over inventing wiring.
 
 4. **Preserve existing structure**: do NOT change existing node/pad IDs.
-   Only add new elements with fresh IDs, or modify DefaultValue/Value
-   attributes on existing elements. Removing nodes also removes their links.
+   Removing nodes also removes their links.
 
-5. **Position new elements**: check the Bounds of existing nodes in the patch,
-   then place new nodes below/beside them with 40–60 px vertical spacing.
-   Match the languageVersion from the patch for any new NugetDependency.
-
-6. **After editing**: if the bridge is running call `get_vvvv_errors` to check
-   for compilation errors; call `reload_file_in_vvvv("{filePath}")` if needed.
+5. **Verify**: build_patch already reloads + reports compile errors. If you made
+   manual edits, call `get_vvvv_errors("{filePath}")` to check just this document.
 """;
     }
 
@@ -80,35 +81,36 @@ public class VvvvPrompts
             """
 ## Creation workflow
 
-1. **Use the patterns resource** (step 0) — it has the correct document skeleton,
-   node reference XML, region structures, and layout rules. Copy the relevant
-   skeleton and substitute fresh 22-char alphanumeric IDs. Do NOT invent XML
-   structure from memory.
+1. **Pick a known graph**: `read_knowledge("vl-common-graphs")` — the recurring
+   subgraphs with exact node names, categories and pin-level links (Stride scene,
+   Skia paint→layer→renderer, channel write/read, TextureFX chains, Fuse
+   particles…). Starting from one of these is faster and correct-er than
+   assembling from scratch.
 
-2. **Find node details**: call `search_nodes("NodeName")` to confirm the exact
-   category, dependency, and pin names. Then `get_node_details("NodeName")`.
+2. **Build with `build_patch`** — ONE call creates the whole connected subgraph:
+   resolves nodes against the live vvvv registry (exact pins + real types),
+   adds NuGet dependencies, declares pins with correct visibility, auto-layouts
+   by dataflow, wires links, saves, reloads in vvvv, and reports compile errors.
+   Node lookup needs just `name` (+ `category` when ambiguous, e.g. "Box" in
+   "Stride.Models"). If a node can't be resolved, the error lists close matches.
 
-3. **Templates**: call `list_templates` to see available .vl/.cs/.sdsl templates,
-   then `get_template("path")` before generating a shader or C# node.
+3. **If the bridge is offline**: `search_nodes`/`get_node_details` use the offline
+   catalog (pin types may be "Object" — trust names, not types). build_patch still
+   works and falls back to the catalog.
 
-4. **Deeper reference (only if the patterns resource doesn't cover it)**:
-   - `read_knowledge("vl-file-format")` — full XML spec, all element attributes
-   - `read_knowledge("vvvv-patching")` — region best practices, event handling
-   - `read_knowledge("vvvv-shaders")` — SDSL authoring details
+4. **Templates**: `list_templates` / `get_template("path")` before generating
+   shaders or C# nodes. `knowledge/templates/vl/basic_vl_objects.vl` shows every
+   document building block (definitions, regions, interfaces) as XML.
+
+5. **Deeper reference (only if needed)**:
+   - `read_knowledge("vl-building-blocks")` — definitions, regions, pads, channels
+   - `read_knowledge("vl-file-format")` — full XML spec
+   - `read_knowledge("vl-project-architecture")` — multi-document project scaffolding
    - `read_knowledge("gray-book-language")` — official language reference
-   - `read_knowledge("vvvv-packages")` — package list with NugetDependency locations
 
-5. **Link direction**: `<Link Ids="outputPinId,inputPinId" />` — output/source FIRST.
-
-6. **Validate before saving**:
-   - All IDs unique and 22-char alphanumeric
-   - `xmlns:p="property"` on `<Document>`, `Version="0.128"` present
-   - `NugetDependency` as direct child of `<Document>`, not inside `<Patch>`
-   - Inner canvases: `CanvasType="Group"` (never `FullCategory`)
-   - Links inside the inner `<Patch>`, not inside `<Canvas>`
-
-7. **Save and verify**: use `create_patch` / `add_node` / `connect_pins` tools
-   OR write the XML directly and call `get_vvvv_errors` if the bridge is running.
+6. **Iterate on errors**: if build_patch reports compile errors, fix the spec and
+   re-run — or use `remove_node` + a follow-up build_patch with only links to
+   rewire. Errors carry elementId matching the XML Id attributes.
 """;
     }
 

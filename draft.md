@@ -585,21 +585,13 @@ env vars configure Open WebUI to skip login (fine for local single-user) and pre
 
 
 other stuff:
-- we should make the mcp aware of all the internal vvvv methods we found via our hde extension
-
--creating patches should have 2 modes: create new vl doc via editor/bridge, or generate from scratch (works without bridge too)
 
 
-issues with live patching:
--creating nodes via mcp doesnt refresh ui, so we cant see the nodes, even if they are there
--when the mcp drops nodes, it needs to make sure the nuget library the node is from is also installed/activated. run nuget install and/or reference in vl doc.
--node_search and catalog is not good enough yet
+(- lets create a scipt to download and install uv and openwebui, which we call when installing the nuget, running it for the first time, or manually, whatever works in that order - OR should we ship everything with the vl lib nuget?)
 
-- lets create a scipt to download and install uv and openwebui, which we call when installing the nuget, running it for the first time, or manually, whatever works in that order
 
-- one issue with live patching currently is that it takes the model a long time to find the right nodes, then often is has no idea about the pins or their types. might be a flaw in our analyzer or un-available info. we should check the analyzer again with our latest verion of the vvvv-mcp. alternative route: use the node analyzer script only to understand which packs contain which nodes and what they do. use the bridge or direct access (chat mode) to look for all available nodes, maybe we can get better info there......first check if we actually get more info inside vvvv before doing anythin..... if so, we could use a smaller db of all available nodes in all packs, but only work with available nodes in the running instance.
 
-- the mcp seems to be able to read logs, warnings, errors, but not the console stream, whcih sometimes has additional valuable info
+
 
 
 
@@ -607,3 +599,281 @@ things we should check after every vvvv release:
 - read changelog
 - check all nugets for new or changed nodes (git diff?)
 - check if the internal vvvv methods the mcp calls are still valid
+
+
+we need to massively improve quality, intelligence and performance of our vvvv mcp:
+
+- review how the mcp is set up and what we can improve. ihave the feeling while the tools we have are good, they should be more powerful and be able to do some of the other tools' features without the extra call. eg: the mcp drops a node, it should check logs right after, like a human would do and not after the next x steps; this might be a bad idea for token usage, idk. the mcp will also currently look up each node he might need for a small patch in several separate mcp call (find node, then drop it), only then it will try to connect it (and maybe find out they are not the matching nodes to connect)- it occurs to me having one tool called something like do a subpatch, which constructs a number of connected nodes at once, connects them, verifies them and only then drops it, would be more efficient, am i wrong? if iam not wrong, look for other optimisations like that after you have a good understanding of vvvv/VL
+- we need to improve our condensed knowledge files we give the mcp when calling certain tools
+- we need to look at more patches to extract patterns, tricks, strategies, recurring graphs and common structures. that will be crucial to create real practical know-how for the mcp
+- we also need to understand the basic building blocks of a vl document much better. application, definitions, processes, classes, records, pads, operations, methods, connections, channels, regions, nodes, reactive, interfaces, the tight c# connection of everything, all vl xml variants and tricks, documents referencing code/documents/nugets. I'm adding a new vl file under templates showing the most basic (but not all) empty document building blocks. We need to completely understand these and how they are used in real pacthes. Also we can look at these folders to analyze real-world large codebase vvvv projects in X:\_work nikolaus\24-007 VL.Helga\VL.Helga and X:\vwgroup-medianight. the goal will be that our mcp can setup big projects like that.
+- node_search and catalog is not good enough yet. it takes the model a long time to find the right nodes, then often is has no idea about the pins or their types. might be a flaw in our analyzer or un-available info. we should check the analyzer again with our latest verion of the vvvv-mcp. alternative route: use the node analyzer script only to understand which packs contain which nodes and what they do. use the bridge or direct access (chat mode) to look for all available nodes of the running instance, maybe we can get better info there......first check if we actually get more info inside vvvv (using our bridge to a live instance) before doing anythin..... if so, we could use a smaller db of all available nodes in all packs, but only work with available nodes in the running instance. there maybe also is a middle-ground here, since you can access the existing mcp, therefore the running vvvv instance, we could complete the node info from the node analyzer this way (pull nuget to vvvv, read, write to json); but might be overengineered.
+- check this conversation where i try to get the mcp to a very basic vvvv patch. it takes ages. analyze for all things we could improve here and in similar scenarios
+https://claude.ai/share/c6fdb60c-b312-4201-8a87-2999e1303bcb
+- creating nodes via mcp doesnt refresh ui, so we cant see the nodes, even if they are there. we had a similar issue when creating a patch, wouldnt show, maybe we can learn from there
+- when the mcp drops nodes, it needs to make sure the nuget library the node is from is also installed/activated. the mcp has to either run nuget install and/or reference in vl doc if already availabe on system.
+- vvvv is ambiguous, it can also mean the old vvvv beta; the new "vvvv gamma" is also often called VL, which is the language in which you program in vvvv (visual language, which is basically node-based .net)
+- creating patches should have 2 modes: create new vl doc via editor/bridge, or generate from scratch (works without bridge too)
+- we should make the mcp aware of all the internal vvvv endpoints/methods we found via our hde extension bridge and mark that knowledge as advanced; in case the mcp needs deeper access in a session. use the bridge to read the info firsthand from the running vvvv instance
+- when i press alt+c we currently kill all processes using our openwebui port, which we did to kill old processes after a vvvv restart. but i might press alt+c in vvvv several times without closing it (only closing chat and opening it again); currently this causes a restart of openwebui, which we dont want, it should run as long vvvv runs....need a cleaner solution here.....
+- sources: we need a routine to run ocr or similar to read the images in the gray book, some things are only explained in images, like this one @project-structure.png. we need to turn these into text and add anhance our graybook version. needs to be a repeatable workflow when images/docs change...
+- sources forums and chat: a lot of invaluable info is buried in the discord forum and matrix chat, specifically for important libraries like fuse, but also for general knowledge shared by the vvvv devs. Im aware we shouldnt provide the full forums to the mcp, but we need a way to extract useful solutions, infos, tricks from chat/forum, at least from devs and powerusers
+- the help patches are our main source for patches, since they show node usages per pack. you can find them in the local packs-community folder. All packs from vvvv or the vvvv group itself obviously need to be inspected extra well, since this is the vvvv core functionality. but note these usually are not real-world projects, but only minimal patches, usually referencing the pack, but often without using additional definitions for classes, records, processes, which is the base vl language approach for all bigger patches.
+
+
+all of this has one goal: make the mcp a truly powerful/professional patching assistant, which can whip up full projects in a blink, not only single nodes after minutes of searching. It should be fast, know vvvv in and out and do all that while being token efficient
+
+when we have made the mcp significantly better, we will do a new commit/release, but we will change the licensing: free for non-commercial use; any commercial use requires a license (link). make sure all our dependencies allow that and do what these licenses might require. I will provide a recurring and perpetual license for individuals, studios (seat-base), maybe also enterprise via polar.sh. until lets keep all comits local, so the next update will already have the new license.
+
+
+
+
+
+we need to test live if alt+b is actually working. it has no in-app window, so no menu entry, probably ok, but it seems like it didnt work and the llm was only able to access vvvv when the in-app chat was running (alt+c)
+
+
+im not sure we should keep this getter/setter synthesization. users dont know about that, what are they really? or is that gone already now?
+
+the windows ocr is very bad, we dont understand more from that. Just look at a few images and the corresponding text, it's garbage. I could use ollama and a local model to work through the fotos maybe?
+
+i understand we have improved the knowledge or our mcp, i wonder how cleverly we serve that knowledge to it though. does it have to go through all knowledge first or do certain tools trigger certain knowledge reads. when do we serve which data? is some of it always available for a pointed start, etc. - i am not suggesting a specific way to go about this, i want you to come up with the best way, depending on tools, on how llms and mcps work. 
+
+
+Rather than saying "commercial use requires payment", define who the license applies to. For example:
+
+Free: Hobbyists, students, educators, research, and open-source projects.
+Commercial: Any use by or on behalf of a business, paid client work, internal business tooling, or products/services offered commercially.
+
+
+looking in the future we should probably keep this repo open source, but do a private repo for our techniques to extract value from documentations, files, libraries......
+
+
+does the ocr script pick up changed images with same, ie check mod date?
+
+
+add html for any time openwebui is not reachable, especially on first start we have something nice like "hi, sit back and relax while we set up your new vvvvibecoding environment"
+
+graphify to understand patches faster?
+
+
+
+would it help to also ship a skill which tells the mcp how to use its tools? over-engineered?
+would it help to also ship a skill which tells the mcp how to use its tools? over-engineered?
+
+---
+
+# 2026-08-04 — big quality/intelligence/performance session (DONE)
+
+
+
+Everything below is implemented, built green, and benchmarked against the live instance.
+Commits stay LOCAL until the release with the new license.
+
+
+
+Hey @digitalwannabe! super cool to see what you have built. I did not get a chance to run it yet but by the shape of the repo it looks quite feature rich already, especially the knowledge and vvvv-context endpoints available to the agent. I think that direction is really promising in reducing the time agents spend theorizing about VL patching tasks.
+
+I may have a useful thread for the write functionality: a few weeks ago I have built a similar prototype with read and write tools for vl files. Works quite well already, although it is still very slow.
+
+Editing a patch works by placing operation requests (placeNode, placePad, connectPins, etc) using a defined json schema into an inbox. These operations are then picked up by an execution thread inside an HDE Extension and applied to the patch using the public editor APIs.
+
+I did not get around to polishing it yet so it is in rough shape, but there may be some helpful ideas or insights in there. Feel free to poke around in the repo, if you find anything useful I am happy to contribute it :)
+
+We discussed this prototype at Link and compared it to @kopffarben’s MCP, seems like we all landed on similar implementation shapes. Seeing that your project now joins the list of work-in-progress MCP connectors, it might be worth consolidating our efforts into one really capable package at some point.
+
+Let me know what you think of this, cheers!
+
+https://github.com/prt-prt/VL.Agent
+
+
+- performance checks: 60fps is the goal (usually)
+
+- small robot showing where its working....?
+
+
+
+
+
+
+## the headline: build_patch
+
+New primary tool `build_patch` (PatchBuilderService): ONE call builds a whole connected
+subgraph — resolves nodes against the LIVE registry, adds missing NuGet deps, declares all
+pins with vvvv-correct visibility, auto-layouts by dataflow depth, wires links (pin groups
+auto-index "Child"→"Child 2"; endpoints accept `key.Pin`, bare `key`, or existing pin IDs
+from read_patch so new graphs wire INTO the existing patch), saves once, opens+reloads in
+vvvv, polls compile errors (filtered by DocumentId, mapped to node keys).
+
+Benchmark (the "rotating box" that took the old flow ~30 calls and never finished):
+**1 call → 6 nodes + 1 pad + 6 links + VL.Stride.Runtime dep + 0 compile errors.**
+
+## live node registry (the catalog fix)
+
+New bridge endpoints (`LiveNodeCatalog.cs`): `/api/nodes`, `/api/nodes/lookup`,
+`/api/nodes/categories`, `/api/nodes/stats`. Merges TWO sources via reflection:
+- `NodeFactoryRegistry.Factories → NodeDescriptions` (.NET nodes, real System.Type pins)
+- `LatestCompilation.DocumentsAndPackages → DefinedSymbols` (VL-defined nodes — this is
+  where Box [Stride.Models] etc. live; the offline analyzer can't see these)
+
+18,761 nodes with exact pins/types/visibility in the test session (vs 6,415 with mostly
+"Object" types offline). Auto-rebuilds when the factory set changes (packages load lazily).
+MCP side: `NodeResolutionService` (live-first, catalog fallback), new tools
+`search_nodes_live`, `get_node_details_live`, `refresh_live_nodes`.
+
+## more fixes
+
+- **UI refresh**: external edits never refreshed the vvvv UI (no file watcher for arbitrary
+  files). Bridge `/api/reload` now calls `Document.ReloadAsync` (official API) on the main
+  thread — verified live.
+- **Errors carry DocumentId + ElementId** (== XML Id attributes) + Why/How — build_patch
+  filters verify errors to the written document and maps them to node keys.
+- **Pin visibility matches vvvv**: hidden = Node Context, state outputs (IsState /
+  "State Output" / output-type==node-type), optional-unlinked pins; pin-group instances
+  stay visible. Node Bounds height always 19; width from name+pin rows.
+- **Alt+C**: chat host now ADOPTS a healthy running Open WebUI (no restart on re-toggle),
+  only kills stale python/uv leftovers, never foreign processes; server dies with vvvv.
+- **MCPBridgeServer : IDisposable** — releases port 7123 on recompile (was hostage before).
+- **Search**: FTS two-phase (AND → OR fallback), prefix on all terms, full_name indexed
+  (schema v2), tolerant GetByName/FindTolerant ("Rotation (Successive)" works).
+- **create_patch**: mode file|editor. **get_vvvv_errors**: optional filePath filter.
+- Env overrides: VVVV_MCP_BRIDGE_PORT / VVVV_MCP_CHAT_PORT (multi-instance).
+- Bridge version unified at 0.3.0 (was skewed 0.2.0/0.3.0).
+
+## knowledge (new/updated, all manually maintained)
+
+- `vl-building-blocks.md` — document model, definitions (process/record/class/interface/
+  operation), pads/IOBoxes, ALL regions table, channels, reactive, delegates, C# interop,
+  XML choice kinds. From basic_vl_objects.vl + gray book.
+- `vl-common-graphs.md` — 19 pin-level patterns mined from 2053 help patches (6277 nodes,
+  241k co-occurrences): Stride scenes, Skia idiom, channels, TextureFX, Fuse particles…
+- `vl-project-architecture.md` — big-project scaffolding from VL.Helga + vwgroup-medianight
+  (Model-Runtime-Editor vs Context-object state, doc graph rules, folder layout, launchers).
+- `vvvv-internals-advanced.md` — bridge endpoints, reflection paths, message model,
+  hot-reload behavior. Marked ADVANCED.
+- `gray-book-image-text.md` — OCR of 186/227 gray book images (scripts/ocr-graybook-images.ps1
+  + scripts/OcrImages tool, Windows OCR, repeatable).
+- vl-quickref fixed (LastDependency, Stride graph, Angular Delta), prompts now lead with
+  build_patch, build-knowledge.ps1 registers the manual files.
+
+## licensing prep (local only)
+
+- LICENSE.md: dual — PolyForm Noncommercial (free: hobbyists/students/educators/research/OSS)
+  + commercial via polar.sh (individual/studio/enterprise, perpetual per major version).
+- THIRD-PARTY-NOTICES.md: full audit. All code deps MIT/Apache. tebjan-vvvv-skills is
+  **CC BY-SA** → derived knowledge files stay CC BY-SA w/ attribution. Gray Book has NO
+  explicit license (summaries + attribution; consider asking vvvv group). packs-community
+  is NOT git-tracked (never ship it). VL.* referenced as nugets, never bundled.
+- csproj/nuspec switched from MIT expression to LICENSE.md file (pack it in publish script).
+
+## still open / next
+
+- Forum scrape running (scrape-forum.ps1 fixed for PS5.1: no `?.`/`??`). Discord/Matrix
+  need export access — no public API; document as manual step.
+- In-vvvv SSE server (chat mode) still dispatches the OLD hand-written subset — phase 4:
+  reference VvvvMcp.Core from VL.MCP.Bridge.csproj and route Dispatch to the real services
+  (incl. build_patch). Live resolution makes the missing SQLite catalog inside vvvv moot.
+- Analyzer: keep for "which pack has which node" (offline), but live registry is now the
+  source of truth for pins/types. Optionally re-run analyzer only for package-level stats.
+- Layout: column layout works but could use link-aware y-ordering (avoid crossing links).
+- The OCR'd text file is indexed by search_knowledge automatically (top-level .md).
+
+---
+
+# 2026-08-05 — follow-up: knowledge serving, chat mode, vision OCR (DONE)
+
+## Alt+B / bridge lifecycle (resolved)
+
+The bridge's Enabled is a constant-True IOBox in VL.MCP.HDE.vl — it is ALWAYS on, no menu
+toggle needed. The old "only works when chat runs" symptom was the port-hostage bug (no
+IDisposable on MCPBridgeServer) — fixed; the bridge ran standalone all session (verified via
+/api/ping + full MCP-over-SSE handshake without any chat window). No Alt+B command exists;
+adding one is optional (bridge is meant to be always-on).
+
+## getter/setter synthesization (kept, but tamed)
+
+VL auto-generates property/field accessor nodes (PropertyGetter/PropertySetter/… from
+INodeDefinitionSymbol.MemberType). They're real placeable nodes but users don't know them and
+they flood name searches. Decision: keep (sometimes the only way to read a property) but
+DEMOTE (score × 0.3) and mark `accessor:true` in /api/nodes output.
+
+## chat mode (Alt+C) now has the FULL tool set — phase 4 done
+
+VL.MCP.Bridge.csproj now references VvvvMcp.Core (compiles clean inside vvvv; SQLite never
+instantiated in-process). New `InProcessTools` routes chat-mode MCP calls to the shared Core
+services; live node resolution via a LOOPBACK BridgeClientService to the bridge's own
+/api/nodes (one source of truth). Verified end-to-end over MCP/SSE: tools/list shows
+build_patch etc., and a build_patch call through chat mode returned success (live-resolved
+LFO, 0 compile errors). Chat placeholder: GET /chat serves a "setting up your vvvv
+vibe-coding environment" page (auto-redirects when Open WebUI is ready); the chat window URL
+pad now points there instead of bare :7125.
+
+## knowledge serving — tiered, token-minimal (the big design)
+
+How MCP knowledge actually reaches the model, now exploited deliberately:
+- Tier 0  ServerInstructions (MCP initialize): ~180 tokens, ALWAYS in context, zero per-turn
+  cost. Golden workflow (build_patch first) + the 5 rules that prevent most failures + the
+  knowledge map. NEW (McpServerOptions.ServerInstructions — SDK 1.0 supports it).
+- Tier 1  tool descriptions: per-turn, behavioral (already tight).
+- Tier 2  conditional hints inside tool RESULTS: only when relevant (build_patch error hints,
+  search_nodes empty/Object hints). search_nodes is now COMPACT (no pin lists — those moved
+  to get_node_details only; search results were a token bomb).
+- Tier 3  search_knowledge/search_practical: long tail, on demand.
+- Tier 4  read_knowledge full files: deep dives only.
+
+## vision OCR (Windows OCR → local Ollama)
+
+Windows OCR was garbage on screenshots. New `scripts/describe-graybook-images.ps1`: local
+Ollama vision model (default qwen3-vl:8b) describes each gray book image with a priming
+prompt (told it's vvvv HDE screenshots: patches/menus/panels) → TEXT / SHOWS / EXPLAINS.
+Incremental + resumable + abort-safe; -Model/-OllamaUrl/-TimeoutSec/-MaxImages.
+User runs the full 227-image pass on a stronger-GPU machine. The garbage Windows-OCR output
+file was removed (will be regenerated by the Ollama run).
+
+## misc
+
+- README license section fixed (dual license + corrected attributions: Open WebUI is BSD-3,
+  tebjan is CC BY-SA, Gray Book has no explicit license).
+- BridgeClientService.SetPort added (loopback use).
+- Known dev-loop friction: vvvv locks lib/net8.0/VvvvMcp.Core.dll, so `dotnet build` of the
+  bridge fails on the COPY step while vvvv runs (compile itself is clean; vvvv builds from
+  source). Close vvvv for distribution builds.
+
+## still open
+
+- Full 227-image vision pass (user, stronger GPU) → then gray-book-image-text.md is real.
+- Optional: Alt+B toggle command in VL.MCP.HDE.vl (bridge currently always-on by design).
+- Analyzer re-run for package-level stats only (live registry is the node source of truth).
+- Layout: link-aware y-ordering (avoid crossing links) — cosmetic.
+
+---
+
+# 2026-08-05 (2) — chat lifecycle battle (DONE, verified live)
+
+The Alt+C chat saga, root causes found and fixed:
+
+1. **Startup cancelled**: the "Open Chat" pin gets a one-frame bang (`HoldLatest.On Data`),
+   so the chat host saw enable→disable in 2 frames and my disable path CANCELLED the Open
+   WebUI startup mid-flight. Fix: never cancel/kill on disable; only Dispose kills.
+2. **Startup race**: parallel Alt+C presses AND HDE hot-recompiles (fresh assembly = fresh
+   instance lock) spawned parallel Open WebUI instances — losers died on port-bind conflict
+   (10048, "exited unexpectedly"). Fix: machine-wide named mutex `Global\vvvv-mcp-chat-start`
+   (survives assembly reloads, handles AbandonedMutexException). After a start completes,
+   the next caller ADOPTS instead of duplicating.
+3. **Adopt derailed**: MCP-registration failure could undo a successful adopt — now non-fatal.
+4. **Redirect swallowed by CEF**: client-side `window.location.replace` to the cross-origin
+   OWUI URL silently failed. Fix: server-side `/chat` does a 302 to OWUI when it's up
+   (`IsChatUpAsync` on the base url), else serves the placeholder; the placeholder polls
+   same-origin `/api/chat/status` and RELOADS on ready (letting the 302 do the navigation).
+5. **Status lied**: `/api/chat/status` reported the host's internal start-state; now reports
+   ACTUAL reachability (OWUI may run even when this host didn't start it).
+6. **Admin prompt**: appears only when OWUI is started WITHOUT `WEBUI_AUTH=False` — the chat
+   host always sets `WEBUI_AUTH=False` + `ENABLE_SIGNUP=False` (+ `OLLAMA_BASE_URL`, `DATA_DIR`)
+   for the local single-user setup.
+
+Also: orphan Open WebUI procs from hot-recompiles can HANG on a full stdout pipe when their
+owning host is disposed without killing them (Dispose does kill, but vvvv doesn't always
+dispose nodes on recompile) — dev-loop-only issue, not a user scenario.
+
+**Bridge is confirmed 100% independent of chat** (fully functional with OWUI down: ping,
+state, documents, live node catalog, build_patch). The old "only works when chat runs" was
+the pre-IDisposable port-hostage bug.

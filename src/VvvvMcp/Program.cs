@@ -52,6 +52,8 @@ builder.Services.AddSingleton<ShaderGeneratorService>();
 builder.Services.AddSingleton<KnowledgeService>();
 builder.Services.AddSingleton<SearchIndexService>();
 builder.Services.AddSingleton<BridgeClientService>();
+builder.Services.AddSingleton<NodeResolutionService>();
+builder.Services.AddSingleton<PatchBuilderService>();
 
 builder.Services
     .AddMcpServer(options =>
@@ -61,6 +63,9 @@ builder.Services
             Name    = "vvvv-mcp",
             Version = appVersion
         };
+        // Tier-0 knowledge: injected ONCE at MCP initialize, always in context,
+        // zero per-turn cost. Keep it dense — every token here is permanent.
+        options.ServerInstructions = ServerInstructions.Text;
     })
     .WithStdioServerTransport()
     .WithToolsFromAssembly()

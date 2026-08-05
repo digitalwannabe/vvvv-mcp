@@ -34,6 +34,13 @@ public class BridgeClientService : IDisposable
         _baseUrl = $"http://127.0.0.1:{port}";
     }
 
+    /// <summary>Point the client at a specific port (e.g. the bridge's own loopback inside vvvv).</summary>
+    public void SetPort(int port)
+    {
+        _baseUrl = $"http://127.0.0.1:{port}";
+        _lastCheck = DateTime.MinValue; // force re-probe
+    }
+
     /// <summary>
     /// Whether a vvvv bridge is detected and responding.
     /// Caches the result for a few seconds to avoid hammering.
@@ -231,6 +238,43 @@ public class BridgeClientService : IDisposable
         return await PostAsync<BridgeOperationResult>("/api/redo", new { });
     }
 
+    // ── Live node catalog ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Search the LIVE node registry of the running vvvv instance.
+    /// Returns null when the bridge or the endpoint (bridge ≥ 0.3) is unavailable.
+    /// </summary>
+    public async Task<LiveNodeSearchResponse?> SearchLiveNodesAsync(
+        string? query, string? category = null, int limit = 30, bool includePins = false)
+    {
+        var q = $"/api/nodes?limit={limit}&pins={(includePins ? "1" : "0")}";
+        if (!string.IsNullOrWhiteSpace(query))    q += $"&query={Uri.EscapeDataString(query)}";
+        if (!string.IsNullOrWhiteSpace(category)) q += $"&category={Uri.EscapeDataString(category)}";
+        return await GetAsync<LiveNodeSearchResponse>(q);
+    }
+
+    /// <summary>
+    /// Exact lookup of one node in the live registry, with full pin details.
+    /// </summary>
+    public async Task<LiveNodeLookupResponse?> LookupLiveNodeAsync(string name, string? category = null)
+    {
+        var q = $"/api/nodes/lookup?name={Uri.EscapeDataString(name)}";
+        if (!string.IsNullOrWhiteSpace(category)) q += $"&category={Uri.EscapeDataString(category)}";
+        return await GetAsync<LiveNodeLookupResponse>(q);
+    }
+
+    /// <summary>Ask the bridge to rebuild its live node snapshot (e.g. after installing a pack).</summary>
+    public async Task<LiveNodeStatsResponse?> RefreshLiveNodesAsync()
+    {
+        return await GetAsync<LiveNodeStatsResponse>("/api/nodes/stats?refresh=1");
+    }
+
+    /// <summary>Live node catalog stats; null when the endpoint doesn't exist (old bridge).</summary>
+    public async Task<LiveNodeStatsResponse?> GetLiveNodeStatsAsync()
+    {
+        return await GetAsync<LiveNodeStatsResponse>("/api/nodes/stats");
+    }
+
     // ── Internal helpers ──────────────────────────────────────────────────
 
     private async Task<T?> GetAsync<T>(string path) where T : class
@@ -295,8 +339,13 @@ public class BridgeDocumentInfo
 public class BridgeErrorInfo
 {
     public string Message { get; set; } = "";
+    public string? Why { get; set; }
+    public string? How { get; set; }
     public string? Severity { get; set; }
     public string? Location { get; set; }
+    public string? DocumentId { get; set; }
+    public string? ElementId { get; set; }
+    public string? Source { get; set; }
 }
 
 public class BridgeStateInfo
@@ -373,4 +422,53 @@ public class BridgeCanvasInfo
 {
     public string? Name { get; set; }
     public string? Id { get; set; }
+}
+
+// ── Live node catalog DTOs ──────────────────────────────────────────────────
+
+public class LivePinInfo
+{
+    public string Name { get; set; } = "";
+    public string Type { get; set; } = "";
+    public string DefaultValue { get; set; } = "";
+    public bool IsPinGroup { get; set; }
+    public bool Hidden { get; set; }
+    public bool Optional { get; set; }
+    public bool State { get; set; }
+}
+
+public class LiveNodeInfo
+{
+    public string Name { get; set; } = "";
+    public string Category { get; set; } = "";
+    public string FullName { get; set; } = "";
+    public string Kind { get; set; } = "Operation";   // "Process" | "Operation"
+    public string Package { get; set; } = "";
+    public string SourceFile { get; set; } = "";
+    public List<LivePinInfo> Inputs { get; set; } = new();
+    public List<LivePinInfo> Outputs { get; set; } = new();
+}
+
+public class LiveNodeSearchResponse
+{
+    public int Total { get; set; }
+    public int Count { get; set; }
+    public DateTime BuiltAt { get; set; }
+    public List<LiveNodeInfo> Nodes { get; set; } = new();
+}
+
+public class LiveNodeLookupResponse
+{
+    public bool Found { get; set; }
+    public int MatchCount { get; set; }
+    public List<LiveNodeInfo> Nodes { get; set; } = new();
+    public List<string> Suggestions { get; set; } = new();
+}
+
+public class LiveNodeStatsResponse
+{
+    public int Nodes { get; set; }
+    public DateTime BuiltAt { get; set; }
+    public bool Stale { get; set; }
+    public string? LastError { get; set; }
 }

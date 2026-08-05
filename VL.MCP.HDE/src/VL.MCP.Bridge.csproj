@@ -16,6 +16,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Shared MCP services (patch builder, node resolution) — pure .NET 8, no vvvv runtime dep.
+         SearchIndexService/SQLite are NOT instantiated inside vvvv (live registry is used instead). -->
+    <ProjectReference Include="..\..\src\VvvvMcp.Core\VvvvMcp.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="VL.Core" />
     <Using Include="VL.Core.Import" />
     <Using Include="VL.Lib.Collections" />

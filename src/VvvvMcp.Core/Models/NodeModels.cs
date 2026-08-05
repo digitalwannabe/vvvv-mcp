@@ -18,7 +18,10 @@ public record NodePin(
     string Summary = "",
     string DefaultValue = "",
     bool IsOptional = false,
-    bool IsGeneric = false
+    bool IsGeneric = false,
+    bool IsHidden = false,
+    bool IsState = false,
+    bool IsPinGroup = false
 );
 
 public record VvvvNode(

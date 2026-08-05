@@ -64,11 +64,16 @@ param(
         'ravazque', 'woei', 'robotanton', 'jens.a', 'm4d', 'evvvvil',
         'tebjan', 'bjoern', 'motzi', 'idwyr', 'kopffarben', 'readme'
     ),
-    [string]   $ApiKey         = ""
+    [string]   $ApiKey         = "",
+    # Rebuild the .md files from the cached forum_raw.json (no network).
+    [switch]   $FromRaw
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+# Needed for HtmlDecode (not auto-loaded in Windows PowerShell 5.1)
+try { Add-Type -AssemblyName System.Web -ErrorAction Stop } catch { Write-Warning "System.Web unavailable: $_" }
 
 # ── Resolve paths ─────────────────────────────────────────────────────────────
 
@@ -103,7 +108,7 @@ function Invoke-ForumApi([string] $path) {
         Start-Sleep -Milliseconds $rateLimitDelay
         return $response
     } catch {
-        if ($_.Exception.Response?.StatusCode -eq 429) {
+        if ($_.Exception.Response -and $_.Exception.Response.StatusCode -eq 429) {
             Write-Warning "Rate limited -- waiting 60 seconds..."
             Start-Sleep -Seconds 60
             return Invoke-ForumApi $path   # retry once
@@ -113,6 +118,53 @@ function Invoke-ForumApi([string] $path) {
     }
 }
 
+# ── Data containers + patterns (shared by fetch and FromRaw) ──────────────────
+
+$solutions = [System.Collections.Generic.List[hashtable]]::new()
+$snippets  = [System.Collections.Generic.List[hashtable]]::new()
+$rawTopics = [System.Collections.Generic.List[hashtable]]::new()
+$fetched = 0
+$codeBlockPattern   = [regex]'```[^\n]*\n([\s\S]*?)```'
+$sdslPattern        = [regex]'(?i)(shader\s+\w+\s*[:{]|TextureFX|FilterBase|MixerBase|ComputeShaderBase)'
+$patchPattern       = [regex]'<Document|<NugetDependency|<Patch\s|<Node\s|NodeReference'
+$csharpNodePattern  = [regex]'\[ProcessNode\]|public\s+class\s+\w+[\s\S]{0,200}Update\s*\('
+
+if ($FromRaw) {
+    # ── Rebuild solutions/snippets from the cached raw JSON (no network) ──────
+    $rawPath0 = Join-Path $RawOutputDir "forum_raw.json"
+    if (-not (Test-Path $rawPath0)) { throw "forum_raw.json not found at $rawPath0 — run without -FromRaw first." }
+    Write-Host "Rebuilding from $rawPath0 (no network)..."
+    $rawData = Get-Content -LiteralPath $rawPath0 -Raw | ConvertFrom-Json
+    $fetched = $rawData.fetched
+    foreach ($t in $rawData.topics) {
+        foreach ($p in $t.posts) {
+            $codes = @($p.codes)
+            if ($p.isSolution -or $p.isDevPost) {
+                $solutions.Add(@{
+                    topicTitle = $t.title; url = "$($t.url)/$($p.postNum)"
+                    username = $p.username; isSolution = [bool]$p.isSolution
+                    isDevPost = [bool]$p.isDevPost
+                    text = $p.text; codes = $codes
+                })
+            }
+            foreach ($code in $codes) {
+                $type = if ($sdslPattern.IsMatch($code)) { "sdsl" }
+                        elseif ($patchPattern.IsMatch($code)) { "vl-patch" }
+                        elseif ($csharpNodePattern.IsMatch($code)) { "csharp-node" }
+                        elseif ($code -match '^\s*(public|private|class|namespace|using\s)') { "csharp" }
+                        else { "other" }
+                if ($type -ne "other" -or $p.isDevPost) {
+                    $snippets.Add(@{
+                        topicTitle = $t.title; url = "$($t.url)/$($p.postNum)"
+                        username = $p.username; codeType = $type; code = $code
+                    })
+                }
+            }
+        }
+    }
+    Write-Host "Rebuilt: $($solutions.Count) solutions, $($snippets.Count) snippets from $fetched topics"
+}
+else {
 # ── Collect topic IDs ─────────────────────────────────────────────────────────
 
 $topicIds = [System.Collections.Generic.HashSet[int]]::new()
@@ -124,7 +176,7 @@ foreach ($tag in $Tags) {
     $page = 0
     do {
         $data = Invoke-ForumApi "/tag/$tag/l/latest.json?page=$page"
-        if (-not $data?.topic_list?.topics) { break }
+        if (-not $data -or -not $data.topic_list -or -not $data.topic_list.topics) { break }
         $topics = $data.topic_list.topics
         foreach ($t in $topics) { [void]$topicIds.Add($t.id) }
         Write-Host "  tag '$tag' page $page : $($topics.Count) topics (total: $($topicIds.Count))"
@@ -138,27 +190,19 @@ Write-Host "Total unique topic IDs: $($topicIds.Count)"
 
 # ── Fetch and parse topics ────────────────────────────────────────────────────
 
-$solutions = [System.Collections.Generic.List[hashtable]]::new()
-$snippets  = [System.Collections.Generic.List[hashtable]]::new()
-$rawTopics = [System.Collections.Generic.List[hashtable]]::new()
-
-$fetched = 0
-$codeBlockPattern   = [regex]'```[^\n]*\n([\s\S]*?)```'
-$sdslPattern        = [regex]'(?i)(shader\s+\w+\s*[:{]|TextureFX|FilterBase|MixerBase|ComputeShaderBase)'
-$patchPattern       = [regex]'<Document|<NugetDependency|<Patch\s|<Node\s|NodeReference'
-$csharpNodePattern  = [regex]'\[ProcessNode\]|public\s+class\s+\w+[\s\S]{0,200}Update\s*\('
-
 foreach ($id in ($topicIds | Select-Object -First $MaxTopics)) {
-    $topic = Invoke-ForumApi "/t/$id.json"
+    $topic = Invoke-ForumApi "/t/$id.json?include_raw=true"
     if (-not $topic) { continue }
 
     $fetched++
     $title     = $topic.title
     $url       = "$ForumUrl/t/$($topic.slug)/$id"
     $tags      = @($topic.tags)
-    $solved    = $topic.accepted_answer  # Discourse Solved plugin
+    $solvedProp = $topic.PSObject.Properties['accepted_answer']
+    $solved    = if ($solvedProp) { $solvedProp.Value } else { $null }  # Discourse Solved plugin (absent when unsolved)
 
-    $posts = @($topic.post_stream?.posts)
+    $posts = @()
+    if ($topic.post_stream -and $topic.post_stream.posts) { $posts = @($topic.post_stream.posts) }
     if ($posts.Count -eq 0) { continue }
 
     # Track extracted data for this topic
@@ -173,14 +217,18 @@ foreach ($id in ($topicIds | Select-Object -First $MaxTopics)) {
 
     foreach ($post in $posts) {
         $username  = $post.username
-        $raw       = $post.cooked ?? $post.raw ?? ""   # HTML or raw markdown
+        # Prefer RAW markdown (code blocks are ``` fenced); cooked is HTML (code in <pre><code>)
+        $rawProp    = $post.PSObject.Properties['raw']
+        $cookedProp = $post.PSObject.Properties['cooked']
+        $raw       = if ($rawProp -and $rawProp.Value) { $rawProp.Value } elseif ($cookedProp -and $cookedProp.Value) { $cookedProp.Value } else { "" }
         $postNum   = $post.post_number
         $isDevPost = $DevUsernames -contains $username
-        $isSolution = ($post.id -eq $solved?.post_id)
+        $isSolution = ($solved -and $post.id -eq $solved.post_id)
 
         # Strip HTML tags for text analysis
         $text = [System.Text.RegularExpressions.Regex]::Replace($raw, '<[^>]+>', '')
-        $text = [System.Web.HttpUtility]::HtmlDecode($text) 2>$null
+        try { $text = [System.Web.HttpUtility]::HtmlDecode($text) } catch { }
+        if ($null -eq $text) { $text = "" }
 
         # Extract code blocks
         $codeMatches = $codeBlockPattern.Matches($raw)
@@ -191,7 +239,7 @@ foreach ($id in ($topicIds | Select-Object -First $MaxTopics)) {
             postNum    = $postNum
             isSolution = $isSolution
             isDevPost  = $isDevPost
-            text       = $text.Trim()[0..([Math]::Min(1000, $text.Length-1))] -join ""
+            text       = $(if ($text.Trim().Length -gt 0) { $text.Trim()[0..([Math]::Min(1000, $text.Trim().Length-1))] -join "" } else { "" })
             codes      = $codes
         }
         $topicData.posts += $postData
@@ -253,6 +301,7 @@ $rawJson = @{
 $rawPath = Join-Path $RawOutputDir "forum_raw.json"
 Set-Content -LiteralPath $rawPath -Value $rawJson -Encoding UTF8
 Write-Host "  forum_raw.json  ($([math]::Round((Get-Item $rawPath).Length/1024,0)) KB)"
+} # end else (network fetch)
 
 # ── Write vl-forum-solutions.md ───────────────────────────────────────────────
 
@@ -268,8 +317,8 @@ $sbSolutions = New-Object System.Text.StringBuilder
 [void]$sbSolutions.AppendLine("| Count | |")
 [void]$sbSolutions.AppendLine("|---|---|")
 [void]$sbSolutions.AppendLine("| Topics fetched | $fetched |")
-[void]$sbSolutions.AppendLine("| Accepted solutions | $(($solutions | Where-Object { $_.isSolution }).Count) |")
-[void]$sbSolutions.AppendLine("| Dev responses | $(($solutions | Where-Object { $_.isDevPost }).Count) |")
+[void]$sbSolutions.AppendLine("| Accepted solutions | $(@($solutions | Where-Object { $_.isSolution }).Count) |")
+[void]$sbSolutions.AppendLine("| Dev responses | $(@($solutions | Where-Object { $_.isDevPost }).Count) |")
 [void]$sbSolutions.AppendLine()
 
 $grouped = $solutions | Group-Object { $_.topicTitle }

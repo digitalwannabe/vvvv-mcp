@@ -203,15 +203,22 @@ public class PatchWriterService
         var pinIds = new Dictionary<string, string>();
         if (pins is not null)
         {
-            foreach (var (pinName, pinKind) in pins)
+            foreach (var (pinName, pinKindRaw) in pins)
             {
+                // "InputPin:hidden" → hidden pin (e.g. Node Context on process nodes)
+                var hidden = pinKindRaw.EndsWith(":hidden", StringComparison.OrdinalIgnoreCase);
+                var pinKind = hidden ? pinKindRaw[..^7] : pinKindRaw;
+
                 var pinId = VlIdGenerator.NewId();
                 pinIds[pinName] = pinId;
-                nodeElement.Add(new XElement("Pin",
+                var pinEl = new XElement("Pin",
                     new XAttribute("Id", pinId),
                     new XAttribute("Name", pinName),
                     new XAttribute("Kind", pinKind)
-                ));
+                );
+                if (hidden)
+                    pinEl.Add(new XAttribute("IsHidden", "true"));
+                nodeElement.Add(pinEl);
             }
         }
 

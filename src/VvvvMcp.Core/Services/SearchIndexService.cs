@@ -29,11 +29,11 @@ public sealed class SearchIndexService : IDisposable
 
     // Column weights for bm25(): higher = more important.
     // Note: bm25() returns NEGATIVE scores; lower value = better match.
-    // knowledge_fts columns (indexed): description(0), content(1)
+    // knowledge_fts columns: description(0), content(1), name(2, unindexed)
     private const double KwDesc = 5.0, KwContent = 1.0;
-    // nodes_fts columns (indexed): name(0), category(1), summary(2), tags(3)
-    private const double NwName = 10.0, NwCategory = 5.0, NwSummary = 2.0, NwTags = 3.0;
-    // practical_fts columns (indexed): title(0), content(1), code(2)
+    // nodes_fts columns: name(0), category(1), summary(2), tags(3), full_name(4), package(5, unindexed), type_name(6, unindexed)
+    private const double NwName = 10.0, NwCategory = 5.0, NwSummary = 2.0, NwTags = 3.0, NwFullName = 8.0;
+    // practical_fts columns: title(0), content(1), code(2)
     private const double PwTitle = 5.0, PwContent = 2.0, PwCode = 3.0;
 
     public SearchIndexService(ILogger<SearchIndexService> logger)
@@ -67,6 +67,11 @@ public sealed class SearchIndexService : IDisposable
         _logger.LogInformation("Search index initialized at {Path}", dbPath);
     }
 
+    // Schema version — bump when FTS table definitions change; tables are dropped
+    // and recreated (they are rebuilt from source data on every startup anyway).
+    // v2: nodes_fts.full_name is now INDEXED (enables "Rotation (Successive)" lookups).
+    private const int SchemaVersion = 2;
+
     private async Task CreateTablesAsync(CancellationToken ct)
     {
         // FTS5 with unicode61 tokenizer:
@@ -79,6 +84,21 @@ public sealed class SearchIndexService : IDisposable
         //   searching "VL" matches "VL.CoreLib", "VL.Stride", etc.
         //   searching "TransformSRT" matches exactly (alphanum, not split)
         //   searching "3D" matches "3D.Transform", "3D.Scene", etc.
+
+        var currentVersion = 0;
+        using (var cmd = _db!.CreateCommand())
+        {
+            cmd.CommandText = "PRAGMA user_version;";
+            currentVersion = Convert.ToInt32(await cmd.ExecuteScalarAsync(ct));
+        }
+
+        if (currentVersion < SchemaVersion)
+        {
+            await ExecuteAsync("DROP TABLE IF EXISTS knowledge_fts;");
+            await ExecuteAsync("DROP TABLE IF EXISTS nodes_fts;");
+            await ExecuteAsync("DROP TABLE IF EXISTS practical_fts;");
+            await ExecuteAsync($"PRAGMA user_version = {SchemaVersion};");
+        }
 
         await ExecuteAsync("""
             CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
@@ -95,7 +115,7 @@ public sealed class SearchIndexService : IDisposable
                 category,
                 summary,
                 tags,
-                full_name   UNINDEXED,
+                full_name,
                 package     UNINDEXED,
                 type_name   UNINDEXED,
                 tokenize    = 'unicode61'
@@ -296,14 +316,37 @@ public sealed class SearchIndexService : IDisposable
     {
         EnsureReady();
 
-        var ftsQuery = BuildFtsQuery(query);
-        if (string.IsNullOrEmpty(ftsQuery)) return [];
+        // Phase 1: AND semantics (all terms must match) — precise.
+        var results = RunNodeQuery(BuildFtsQuery(query, orMode: false), category, limit);
 
+        // Phase 2: OR fallback (any term, prefix-matched) — recall.
+        // Fixes "0 results" for natural multi-word queries like "box model entity".
+        if (results.Count < Math.Min(5, limit))
+        {
+            var orResults = RunNodeQuery(BuildFtsQuery(query, orMode: true), category, limit * 2);
+            var seen = new HashSet<string>(
+                results.Select(r => r.FullName + "|" + r.Package),
+                StringComparer.OrdinalIgnoreCase);
+            foreach (var hit in orResults)
+            {
+                if (seen.Add(hit.FullName + "|" + hit.Package))
+                    results.Add(hit);
+                if (results.Count >= limit) break;
+            }
+            results = results.OrderByDescending(r => r.Score).Take(limit).ToList();
+        }
+
+        return results;
+    }
+
+    private List<(string FullName, string Package, double Score)> RunNodeQuery(
+        string ftsQuery, string? category, int limit)
+    {
         var results = new List<(string, string, double)>();
+        if (string.IsNullOrEmpty(ftsQuery)) return results;
 
         using var cmd = _db!.CreateCommand();
 
-        // With optional category filter
         var whereClause = string.IsNullOrEmpty(category)
             ? "WHERE nodes_fts MATCH $q"
             : "WHERE nodes_fts MATCH $q AND category LIKE $cat";
@@ -312,7 +355,7 @@ public sealed class SearchIndexService : IDisposable
             SELECT
                 full_name,
                 package,
-                bm25(nodes_fts, {NwName}, {NwCategory}, {NwSummary}, {NwTags}) AS rank
+                bm25(nodes_fts, {NwName}, {NwCategory}, {NwSummary}, {NwTags}, {NwFullName}, 0.0, 0.0) AS rank
             FROM nodes_fts
             {whereClause}
             ORDER BY rank
@@ -578,13 +621,15 @@ public sealed class SearchIndexService : IDisposable
     /// <summary>
     /// Converts a user query string to a safe FTS5 MATCH expression.
     ///
-    /// Single word  → "word*"      (prefix match)
-    /// Multi-word   → "word1 word2" (implicit AND, both must appear)
-    /// Quoted phrase → passed through as FTS5 phrase
+    /// Single word     → "word*"          (prefix match)
+    /// Multi-word AND  → "word1* word2*"  (both must appear — precise)
+    /// Multi-word OR   → "word1* OR word2*" (any may appear — recall; BM25 still
+    ///                   ranks documents matching more terms higher)
+    /// Quoted phrase   → passed through as FTS5 phrase
     ///
     /// Strips FTS5 special operators that could cause parse errors.
     /// </summary>
-    public static string BuildFtsQuery(string query)
+    public static string BuildFtsQuery(string query, bool orMode = false)
     {
         query = query.Trim();
         if (string.IsNullOrEmpty(query)) return "";
@@ -602,14 +647,14 @@ public sealed class SearchIndexService : IDisposable
 
         if (terms.Length == 0) return "";
 
-        // Single-term: add prefix wildcard for "starts-with" behaviour
         if (terms.Length == 1)
             return terms[0] + "*";
 
-        // Multi-term: implicit AND (FTS5 default) — all terms must appear somewhere
-        // Add prefix wildcard to last term only (most common pattern: "foreach spr*")
-        terms[^1] += "*";
-        return string.Join(" ", terms);
+        // Prefix wildcard on every term — "rot" should find "Rotation"
+        var prefixed = terms.Select(t => t + "*").ToArray();
+        return orMode
+            ? string.Join(" OR ", prefixed)
+            : string.Join(" ", prefixed);
     }
 
     // ── Internal parsing helpers ─────────────────────────────────────────────

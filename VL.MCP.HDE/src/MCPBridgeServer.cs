@@ -10,13 +10,19 @@ using VL.Core.Import;
 
 namespace VL.MCP;
 
+/// <summary>Single source of truth for the bridge version (REST + MCP).</summary>
+internal static class BridgeVersion
+{
+    public const string Current = "0.3.0";
+}
+
 /// <summary>
 /// Process node that runs an HTTP bridge server inside vvvv.
 /// Exposes document management, error monitoring, log capture, and editor navigation.
 /// </summary>
-[ProcessNode]
-public class MCPBridgeServer
-{
+    [ProcessNode]
+    public class MCPBridgeServer : IDisposable
+    {
     private HttpListener? _listener;
     private Task? _serverTask;
     private CancellationTokenSource? _cts;
@@ -28,6 +34,8 @@ public class MCPBridgeServer
     private bool _consoleTeeInstalled;
     private McpSseServer? _mcpSse;
     private McpChatHost?  _chatHost;
+    private readonly LiveNodeCatalog _nodeCatalog = new();
+    private readonly InProcessTools _inProcess = new();
     // Chat toggle — rising edge of openChat flips _chatEnabled, so both
     // a momentary bang and a persistent bool work as input
     private bool _chatEnabled;
@@ -49,6 +57,16 @@ public class MCPBridgeServer
     {
         _nodeContext = nodeContext;
         string? lastError = null;
+
+        // Env var overrides allow running multiple vvvv instances side by side
+        // (e.g. a dev instance next to a production one). The MCP client side
+        // (BridgeClientService) honors the same variables.
+        if (Environment.GetEnvironmentVariable("VVVV_MCP_BRIDGE_PORT") is { } bp &&
+            int.TryParse(bp, out var envPort))
+            port = envPort;
+        if (Environment.GetEnvironmentVariable("VVVV_MCP_CHAT_PORT") is { } cp &&
+            int.TryParse(cp, out var envChatPort))
+            chatPort = envChatPort;
 
         if (!enabled)
         {
@@ -100,6 +118,7 @@ public class MCPBridgeServer
             _state.UpdateErrors(appHost);
             _state.UpdateRunningState(appHost);
             _state.UpdatePackages();
+            _nodeCatalog.Update(nodeContext);
         }
         catch { }
 
@@ -129,6 +148,7 @@ public class MCPBridgeServer
             _listener = new HttpListener();
             _listener.Prefixes.Add($"http://127.0.0.1:{_currentPort}/");
             _listener.Start();
+            _inProcess.SetBridgePort(_currentPort);
             _mcpSse   = new McpSseServer(Dispatch);
             _serverTask = Task.Run(() => RequestLoop(_cts.Token), _cts.Token);
             return null;
@@ -186,6 +206,42 @@ public class MCPBridgeServer
                 return;
             }
 
+            // ── Chat placeholder / redirect ──
+            if (path == "/chat" && method == "GET")
+            {
+                // If Open WebUI is already up, go straight there (302) — much more
+                // robust than client-side polling from inside CEF. Otherwise serve
+                // the friendly "setting up" page which keeps polling as a backup.
+                var chatUrl = _chatHost?.ChatUrl ?? "http://localhost:7125";
+                if (await IsChatUpAsync(chatUrl))
+                {
+                    response.StatusCode = 302;
+                    response.RedirectLocation = chatUrl;
+                    response.Close();
+                    return;
+                }
+                WriteHtml(response, ChatPlaceholderPage.Html(_chatHost?.Status ?? "starting…"));
+                return;
+            }
+
+            // ── Chat readiness probe (same-origin, used by the placeholder page) ──
+            if (path == "/api/chat/status" && method == "GET")
+            {
+                var chatUrl = _chatHost?.ChatUrl ?? "http://localhost:7125";
+                var up = await IsChatUpAsync(chatUrl);
+                // Report ACTUAL reachability, not just the host's internal start state —
+                // Open WebUI may be running even when this host didn't start it (adopted
+                // or started externally). The placeholder only cares "can I redirect yet?".
+                WriteJson(response, new
+                {
+                    ready = up,
+                    url = chatUrl,
+                    status = up ? "ready" : (_chatHost?.Status ?? "setting up…"),
+                    error = up ? null : _chatHost?.LastError
+                });
+                return;
+            }
+
             object? result = (method, path) switch
             {
                 // ── Status ──
@@ -193,7 +249,7 @@ public class MCPBridgeServer
                 {
                     status = "ok",
                     server = "VL.MCP",
-                    version = "0.2.0",
+                    version = BridgeVersion.Current,
                     timestamp = DateTimeOffset.UtcNow
                 },
                 ("GET", "/api/state") => new
@@ -208,6 +264,7 @@ public class MCPBridgeServer
                 ("GET", "/api/documents") => _state.Documents,
                 ("GET", "/api/errors") => _state.Errors,
                 ("GET", "/api/packages") => _state.Packages,
+                ("GET", "/api/channels") => _state.Channels,
 
                 // ── Document Operations ──
                 ("POST", "/api/documents/open") => HandleOpenDocument(request),
@@ -226,6 +283,12 @@ public class MCPBridgeServer
                 // ── Log/Console ──
                 ("GET", "/api/log") => HandleGetLog(request),
                 ("DELETE", "/api/log") => HandleClearLog(),
+
+                // ── Live node catalog ──
+                ("GET", "/api/nodes") => HandleNodeSearch(request),
+                ("GET", "/api/nodes/lookup") => HandleNodeLookup(request),
+                ("GET", "/api/nodes/categories") => _nodeCatalog.GetCategories(request.QueryString["prefix"]),
+                ("GET", "/api/nodes/stats") => HandleNodeStats(request),
 
                 // ── Navigation ──
                 ("POST", "/api/navigate") => HandleNavigate(request),
@@ -656,9 +719,37 @@ public class MCPBridgeServer
         if (!File.Exists(filePath))
             return new { success = false, error = $"File not found: {filePath}" };
 
-        // Touch file to trigger vvvv's file watcher
+        // 1. If the document is open in the session, reload it properly from disk.
+        //    This updates the in-memory model AND the editor UI. Touching the file
+        //    alone does NOT work — vvvv does not watch arbitrary files.
+        //    Safe to block here: we are on a threadpool thread, the reload itself
+        //    is marshaled to the vvvv main thread inside.
+        DocumentReloadResult result;
+        try
+        {
+            result = _state.ReloadDocumentFromDiskAsync(filePath, _nodeContext?.AppHost)
+                           .GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            return new { success = false, filePath, error = ex.Message };
+        }
+
+        if (result.Found)
+        {
+            return new
+            {
+                success = result.Reloaded,
+                filePath,
+                method = "Document.ReloadAsync",
+                discardedEditorChanges = result.HadUnsavedChanges ? true : (bool?)null,
+                error = result.Error
+            };
+        }
+
+        // 2. Not open in the session — touch the file as a fallback
         File.SetLastWriteTimeUtc(filePath, DateTime.UtcNow);
-        return new { success = true, filePath };
+        return new { success = true, filePath, method = "touch (document not open in session)" };
     }
 
     // ── Log/Console ──────────────────────────────────────────────────────────────
@@ -688,6 +779,51 @@ public class MCPBridgeServer
     {
         _logCapture.Clear();
         return new { success = true, message = "Log cleared" };
+    }
+
+    // ── Live node catalog ─────────────────────────────────────────────────────
+
+    private object HandleNodeSearch(HttpListenerRequest request)
+    {
+        if (request.QueryString["refresh"] == "1" || request.QueryString["refresh"] == "true")
+            _nodeCatalog.RequestRebuild();
+
+        var query = request.QueryString["query"];
+        var category = request.QueryString["category"];
+        var limitStr = request.QueryString["limit"];
+        var limit = int.TryParse(limitStr, out var l) ? l : 30;
+        var pins = request.QueryString["pins"];
+        var includePins = pins == "1" || pins == "true";
+
+        return _nodeCatalog.Search(query, category, limit, includePins);
+    }
+
+    private object HandleNodeLookup(HttpListenerRequest request)
+    {
+        if (request.QueryString["refresh"] == "1" || request.QueryString["refresh"] == "true")
+            _nodeCatalog.RequestRebuild();
+
+        var name = request.QueryString["name"];
+        if (string.IsNullOrEmpty(name))
+            return new { found = false, error = "name parameter required" };
+
+        var category = request.QueryString["category"];
+        return _nodeCatalog.Lookup(name, category);
+    }
+
+    private object HandleNodeStats(HttpListenerRequest request)
+    {
+        if (request.QueryString["refresh"] == "1" || request.QueryString["refresh"] == "true")
+            _nodeCatalog.RequestRebuild();
+
+        return new
+        {
+            nodes = _nodeCatalog.NodeCount,
+            builtAt = _nodeCatalog.BuiltAt,
+            stale = _nodeCatalog.IsStale,
+            lastError = _nodeCatalog.LastBuildError,
+            diagnostics = _nodeCatalog.Diagnostics
+        };
     }
 
     // ── Navigation ───────────────────────────────────────────────────────────────
@@ -1051,6 +1187,27 @@ public class MCPBridgeServer
         return reader.ReadToEnd();
     }
 
+    private static void WriteHtml(HttpListenerResponse response, string html)
+    {
+        var buffer = Encoding.UTF8.GetBytes(html);
+        response.ContentType = "text/html; charset=utf-8";
+        response.ContentLength64 = buffer.Length;
+        try { response.OutputStream.Write(buffer, 0, buffer.Length); } catch { }
+    }
+
+    /// <summary>True when Open WebUI answers on its URL (any non-5xx HTTP status).</summary>
+    private static async Task<bool> IsChatUpAsync(string chatUrl)
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(2500) };
+            // Base url ("/") — some OWUI versions don't have /health.
+            var resp = await client.GetAsync(chatUrl);
+            return (int)resp.StatusCode < 500;
+        }
+        catch { return false; }
+    }
+
     private static void WriteJson(HttpListenerResponse response, object data)
     {
         response.ContentType = "application/json";
@@ -1071,6 +1228,16 @@ public class MCPBridgeServer
         _serverTask = null;
         _chatHost?.Dispose();
         _chatHost   = null;
+    }
+
+    /// <summary>
+    /// Critical: release the HTTP listener when vvvv disposes this node instance
+    /// (document reload, C# recompile, patch close). Without this the old listener
+    /// keeps port 7123 hostage and the recompiled bridge can never start.
+    /// </summary>
+    public void Dispose()
+    {
+        Stop();
     }
 
     // ── Debug (kept from before) ─────────────────────────────────────────────────
@@ -1119,9 +1286,23 @@ public class MCPBridgeServer
             if (!string.IsNullOrEmpty(queryPath))
             {
                 var parts = queryPath.Split('.');
-                foreach (var part in parts)
+                foreach (var rawPart in parts)
                 {
                     if (current is null) break;
+
+                    // Support enumerable indexing: "DocumentSymbols[3]"
+                    var part = rawPart;
+                    var index = -1;
+                    var bracket = rawPart.IndexOf('[');
+                    if (bracket > 0 && rawPart.EndsWith(']'))
+                    {
+                        if (int.TryParse(rawPart[(bracket + 1)..^1], out var idx))
+                        {
+                            index = idx;
+                            part = rawPart[..bracket];
+                        }
+                    }
+
                     var prop = current.GetType().GetProperty(part,
                         BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
                     if (prop is null)
@@ -1134,6 +1315,18 @@ public class MCPBridgeServer
                         return info;
                     }
                     current = prop.GetValue(current);
+
+                    if (index >= 0 && current is IEnumerable enumerable2 && current is not string)
+                    {
+                        var i = 0;
+                        object? found = null;
+                        foreach (var item in enumerable2)
+                        {
+                            if (i == index) { found = item; break; }
+                            i++;
+                        }
+                        current = found;
+                    }
                     info["resolvedType"] = current?.GetType().FullName;
                 }
             }
@@ -1167,11 +1360,12 @@ public class MCPBridgeServer
 
             if (current is IEnumerable enumerable && current is not string)
             {
+                var take = int.TryParse(request.QueryString["take"], out var t) ? Math.Clamp(t, 1, 500) : 10;
                 var items = new List<object?>();
                 int count = 0;
                 foreach (var item in enumerable)
                 {
-                    if (count >= 10) { items.Add("...(truncated)"); break; }
+                    if (count >= take) { items.Add("...(truncated)"); break; }
                     var itemType = item?.GetType();
                     var nameP = itemType?.GetProperty("Name")?.GetValue(item)?.ToString();
                     var pathP = itemType?.GetProperty("FilePath")?.GetValue(item)?.ToString()
@@ -1244,6 +1438,11 @@ public class MCPBridgeServer
                 "reload_file_in_vvvv"      => HandleReloadDirect(Str("filePath")),
                 "undo_in_vvvv"             => HandleUndoDirect(),
                 "redo_in_vvvv"             => HandleRedoDirect(),
+                // ── Shared Core services (build_patch, live nodes, patch read) ──
+                "build_patch" or "search_nodes_live" or "get_node_details_live"
+                    or "refresh_live_nodes" or "read_patch" or "explain_patch"
+                    or "list_patch_dependencies"
+                    => _inProcess.DispatchAsync(toolName, paramsJson).GetAwaiter().GetResult(),
                 _                          => (object)new { error = $"Unknown tool: {toolName}" }
             };
 

@@ -9,28 +9,47 @@ public class PatchWriteTools
 {
     private readonly PatchWriterService _writer;
     private readonly NodeCatalogService _catalog;
+    private readonly NodeResolutionService _resolver;
+    private readonly BridgeClientService _bridge;
 
-    public PatchWriteTools(PatchWriterService writer, NodeCatalogService catalog)
+    public PatchWriteTools(
+        PatchWriterService writer,
+        NodeCatalogService catalog,
+        NodeResolutionService resolver,
+        BridgeClientService bridge)
     {
         _writer = writer;
         _catalog = catalog;
+        _resolver = resolver;
+        _bridge = bridge;
     }
 
     [McpServerTool(Name = "create_patch")]
-    [Description("Create a new empty vvvv gamma .vl patch file with standard Application process structure.")]
-    public object CreatePatch(
+    [Description("Create a new empty vvvv gamma .vl patch file with standard Application process structure. " +
+        "mode 'file' (default) writes the .vl from scratch (works without vvvv running); " +
+        "mode 'editor' additionally opens it in the running vvvv instance via the bridge.")]
+    public async Task<object> CreatePatch(
         [Description("Absolute file path for the new .vl file")] string filePath,
         [Description("Optional: main category name (default 'Main')")] string category = "Main",
-        [Description("Optional: comma-separated NuGet dependencies (default 'VL.CoreLib'). Example: 'VL.CoreLib,VL.Stride'")] string dependencies = "VL.CoreLib")
+        [Description("Optional: comma-separated NuGet dependencies (default 'VL.CoreLib'). Example: 'VL.CoreLib,VL.Stride'")] string dependencies = "VL.CoreLib",
+        [Description("'file' (default) or 'editor' (also open in running vvvv)")] string mode = "file")
     {
         try
         {
             if (File.Exists(filePath))
-                return new { error = $"File already exists: {filePath}. Use add_node/connect_pins to modify it." };
+                return new { error = $"File already exists: {filePath}. Use build_patch/add_node to modify it." };
 
             var deps = dependencies.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
             var doc = _writer.CreateDocument(category, dependencies: deps);
             _writer.SaveDocument(doc, filePath);
+
+            var openedInEditor = false;
+            if (mode.Equals("editor", StringComparison.OrdinalIgnoreCase) &&
+                await _bridge.CheckAvailabilityAsync())
+            {
+                var res = await _bridge.OpenDocumentAsync(filePath);
+                openedInEditor = res?.Success ?? false;
+            }
 
             return new
             {
@@ -38,7 +57,8 @@ public class PatchWriteTools
                 filePath,
                 category,
                 dependencies = deps,
-                message = "Patch created. Use add_node and add_pad to add content, then connect_pins to wire them."
+                openedInEditor,
+                message = "Patch created. Prefer build_patch to add a whole connected subgraph in one call."
             };
         }
         catch (Exception ex)
@@ -48,21 +68,73 @@ public class PatchWriteTools
     }
 
     [McpServerTool(Name = "add_node")]
-    [Description("Add a node to a vvvv gamma .vl patch. Returns the new node ID and pin IDs for wiring.")]
-    public object AddNode(
+    [Description("Add a single node to a vvvv gamma .vl patch. Pins are auto-declared from the live vvvv registry " +
+        "(or catalog fallback) when the 'pins' parameter is omitted — no more manual pin lists. " +
+        "The node's NuGet dependency is added to the document automatically. " +
+        "For more than one node, prefer build_patch (nodes+links+deps+verify in one call).")]
+    public async Task<object> AddNode(
         [Description("Absolute path to the .vl file")] string filePath,
         [Description("Node name (e.g. '+', 'Box', 'TransformSRT', 'LFO')")] string nodeName,
-        [Description("Full category name (e.g. 'Math', 'Stride.Models', '3D.Transform')")] string category,
-        [Description("Dependency .vl file (e.g. 'VL.CoreLib.vl', 'VL.Stride.vl')")] string dependency,
-        [Description("Node kind: 'OperationCallFlag' for operations, 'ProcessAppFlag' for stateful processes")] string nodeKind = "OperationCallFlag",
-        [Description("Comma-separated pin definitions: 'Name:Kind'. Example: 'Input:InputPin,Output:OutputPin'")] string? pins = null,
-        [Description("Optional position as 'x,y,width,height' (auto-positioned if omitted)")] string? bounds = null)
+        [Description("Full category name (e.g. 'Math', 'Stride.Models', '3D.Transform'). Optional when the name is unambiguous.")] string? category = null,
+        [Description("Dependency .vl file — normally auto-detected from the node resolution; override only if wrong.")] string? dependency = null,
+        [Description("Node kind: 'OperationCallFlag' or 'ProcessAppFlag' — auto-detected when omitted.")] string? nodeKind = null,
+        [Description("Comma-separated pin definitions: 'Name:Kind'. Omit to auto-declare ALL pins from the resolved node description.")] string? pins = null,
+        [Description("Optional position as 'x,y,width,height' (auto-positioned if omitted)")] string? bounds = null,
+        [Description("After saving, reload in vvvv and report compile errors (default true)")] bool verify = true)
     {
         try
         {
             var doc = _writer.LoadDocument(filePath);
 
+            // ── Resolve node (live registry → catalog) for pins/kind/dependency ──
+            var resolution = await _resolver.ResolveAsync(nodeName, category);
+            string? resolvedCategory = category;
+            string? resolvedDependency = dependency;
+            string? resolvedKind = nodeKind;
             List<(string Name, string Kind)>? pinList = null;
+            string? resolutionNote = null;
+
+            if (resolution.Found)
+            {
+                var r = resolution.Node!;
+                resolvedCategory ??= r.Category;
+                resolvedDependency ??= r.DependencyFile;
+                resolvedKind ??= r.XmlNodeKind;
+
+                if (pins is null)
+                {
+                    // Auto-declare all pins so the node is fully wired-up-able.
+                    // Process nodes carry the hidden infrastructure pin "Node Context";
+                    // hidden-by-default pins get IsHidden like a hand-placed node.
+                    pinList = new List<(string, string)>();
+                    if (resolvedKind == "ProcessAppFlag")
+                        pinList.Add(("Node Context", "InputPin:hidden"));
+                    pinList.AddRange(r.Inputs.Select(p => (p.Name, p.IsHidden ? "InputPin:hidden" : "InputPin")));
+                    pinList.AddRange(r.Outputs.Select(p => (p.Name, p.IsHidden ? "OutputPin:hidden" : "OutputPin")));
+                }
+
+                // Auto-add the NuGet dependency
+                if (!string.IsNullOrEmpty(r.Package))
+                    _writer.AddDependency(doc, r.Package);
+            }
+            else
+            {
+                resolutionNote = $"Node '{nodeName}' could not be resolved — adding without pins. " +
+                                 (resolution.Suggestions.Count > 0
+                                     ? $"Did you mean: {string.Join(", ", resolution.Suggestions)}?"
+                                     : "Check the name/category.");
+            }
+
+            if (resolvedCategory is null || resolvedDependency is null)
+            {
+                return new
+                {
+                    error = $"Cannot determine category/dependency for '{nodeName}'. Provide them explicitly or check the node name.",
+                    suggestions = resolution.Suggestions
+                };
+            }
+
+            // Explicit pin list overrides auto-declaration
             if (pins is not null)
             {
                 pinList = pins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -74,15 +146,39 @@ public class PatchWriteTools
                     .ToList();
             }
 
-            var result = _writer.AddNode(doc, nodeName, category, dependency, pinList, nodeKind, bounds);
+            var result = _writer.AddNode(doc, nodeName, resolvedCategory, resolvedDependency, pinList, resolvedKind, bounds);
             _writer.SaveDocument(doc, filePath);
+
+            // ── Verify: reload + compile errors ──────────────────────────────
+            object? verification = null;
+            if (verify && await _bridge.CheckAvailabilityAsync())
+            {
+                try { File.SetLastWriteTimeUtc(filePath, DateTime.UtcNow); } catch { }
+                await _bridge.ReloadFileAsync(filePath);
+                await Task.Delay(700);
+                var errors = await _bridge.GetErrorsAsync();
+                if (errors is not null)
+                {
+                    var errs = errors
+                        .Where(e => e.Severity?.Contains("Error", StringComparison.OrdinalIgnoreCase) ?? true)
+                        .Take(3)
+                        .Select(e => new { e.Message, e.Location })
+                        .ToList();
+                    verification = new { compileErrors = errs.Count, errors = errs };
+                }
+            }
 
             return new
             {
                 success = true,
                 nodeId = result.NodeId,
                 pinIds = result.PinIds,
-                message = $"Node '{nodeName}' added. Use connect_pins with the pin IDs to wire it."
+                resolved = resolution.Found
+                    ? new { resolution.Node!.FullName, kind = resolvedKind, package = resolution.Node.Package, origin = resolution.Node.Origin }
+                    : null,
+                resolutionNote,
+                verification,
+                message = $"Node '{nodeName}' added."
             };
         }
         catch (Exception ex)

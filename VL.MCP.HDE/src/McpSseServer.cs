@@ -61,7 +61,7 @@ internal class McpSseServer
                 {
                     protocolVersion = "2024-11-05",
                     capabilities    = new { tools = new { listChanged = false } },
-                    serverInfo      = new { name = "vvvv-mcp-bridge", version = "0.3.0" }
+                    serverInfo      = new { name = "vvvv-mcp-bridge", version = BridgeVersion.Current }
                 },
                 "tools/list"   => new { tools = ToolSchemas.LiveEditorTools },
                 "tools/call"   => HandleToolCall(params_),
@@ -150,7 +150,7 @@ internal class McpSseServer
                 {
                     protocolVersion = "2024-11-05",
                     capabilities    = new { tools = new { listChanged = false } },
-                    serverInfo      = new { name = "vvvv-mcp-bridge", version = "0.3.0" }
+                    serverInfo      = new { name = "vvvv-mcp-bridge", version = BridgeVersion.Current }
                 },
                 "tools/list"   => new { tools = ToolSchemas.LiveEditorTools },
                 "tools/call"   => HandleToolCall(params_),
@@ -239,5 +239,27 @@ internal static class ToolSchemas
             new { filePath = Prop("string", "Absolute path") }, ["filePath"]),
         Tool("undo_in_vvvv", "Undo the last action.", new { }, []),
         Tool("redo_in_vvvv", "Redo the last action.", new { }, []),
+
+        // ── Shared Core tools (same implementations as the external MCP server) ──
+        Tool("build_patch",
+            "Build a whole connected subgraph in ONE call: resolves nodes against the live vvvv registry (exact pins+types), adds NuGet deps, declares pins with correct visibility, auto-layouts, wires links (pin groups auto-index; endpoints accept 'key.Pin' or existing pin IDs from read_patch), saves, reloads, reports compile errors. THE primary way to create patch content.",
+            new { spec = Prop("string", "JSON build spec: { filePath, nodes:[{key,name,category?,package?,kind?,bounds?,values?}], pads:[{key,type,value?,bounds?}], links:[{from,to}], verify?, open?, verbosity? }") },
+            ["spec"]),
+        Tool("search_nodes_live",
+            "Search the LIVE node registry of this vvvv instance — exact pins, real types, only nodes actually placeable now.",
+            new { query = Prop("string", "Node name, category, or keyword"),
+                  category = Prop("string", "Optional category prefix filter"),
+                  limit = Prop("integer", "Max results (default 20)") }, ["query"]),
+        Tool("get_node_details_live",
+            "Exact pin names, real pin types and defaults for a node from the LIVE registry.",
+            new { name = Prop("string", "Node name (e.g. 'Box', 'LFO', 'Rotation (Successive)')"),
+                  category = Prop("string", "Optional category hint to disambiguate") }, ["name"]),
+        Tool("refresh_live_nodes", "Rebuild the live node snapshot (e.g. after installing a pack).", new { }, []),
+        Tool("read_patch", "Parse a .vl patch file: nodes, pins, links, pads, dependencies.",
+            new { filePath = Prop("string", "Absolute path to the .vl file") }, ["filePath"]),
+        Tool("explain_patch", "Natural-language explanation of a .vl patch.",
+            new { filePath = Prop("string", "Absolute path to the .vl file") }, ["filePath"]),
+        Tool("list_patch_dependencies", "List NuGet dependencies of a .vl file.",
+            new { filePath = Prop("string", "Absolute path to the .vl file") }, ["filePath"]),
     ];
 }

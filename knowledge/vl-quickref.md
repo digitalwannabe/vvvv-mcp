@@ -36,11 +36,14 @@ The **second Choice** determines whether it's stateless or stateful:
 
 **Stateful process node:**
 ```xml
-<p:NodeReference LastCategoryFullName="Stride.Models" LastDependency="VL.Stride.vl">
+<p:NodeReference LastCategoryFullName="Stride.Models" LastDependency="VL.Stride.Runtime.vl">
   <Choice Kind="NodeFlag" Name="Node" Fixed="true" />
   <Choice Kind="ProcessAppFlag" Name="Box" />
 </p:NodeReference>
 ```
+
+(`LastDependency` = the .vl file that actually defines the node, e.g. `VL.Stride.Runtime.vl` —
+the live tools resolve this automatically. Variant names go into the Name: `Rotation (Successive)`.)
 
 **Application (entry point) container:**
 ```xml
@@ -122,16 +125,21 @@ Common `TypeFlag` names: `Boolean`, `Int32`, `Float32`, `Float64`, `String`, `Ve
 ## Stride 3D scene — typical structure
 
 ```
-SceneWindow (vvvv entry point for 3D rendering)
-  └── RootScene
-        └── Entity
-              ├── TransformSRT (position/rotation/scale)
-              ├── Box / Sphere / Cylinder / Plane / Torus (Model node)
-              └── Material (PBR or unlit)
+SceneWindow [Stride]            ← entry point for 3D rendering
+  └── RootScene [Stride]        ← .Output → SceneWindow.Input
+        ├── Box/Sphere/Plane [Stride.Models]   ← .Entity → RootScene.Child (pin group!)
+        │     └── PBRMaterial (Metallic) [Stride.Materials] → .Material
+        ├── DirectionalLight / SkyboxLight [Stride.Lights]  ← .Entity → RootScene.Child
+        └── OrbitCamera [Stride.Cameras] → SceneWindow.Camera
 ```
 
-Key package: `VL.Stride` → NugetDependency `Location="VL.Stride"`
+Rotation over time: `Rotation (Successive) [3D.Transform]` — feed `Angular Delta`
+(Vector3, cycles per FRAME, e.g. `-0.02, 0, 0`), output `Result` is a Matrix →
+connect directly to a model's `Transformation` pin (no TransformSRT needed).
+
+Key package: `VL.Stride` → NugetDependency `Location="VL.Stride"` (resolves to VL.Stride.Runtime)
 Key categories: `Stride` (SceneWindow, RootScene), `Stride.Models`, `Stride.Materials`, `Stride.Cameras`, `Stride.Lights`
+More pin-level graphs: `vl-common-graphs`.
 
 ---
 
@@ -139,6 +147,9 @@ Key categories: `Stride` (SceneWindow, RootScene), `Stride.Models`, `Stride.Mate
 
 | Topic | Knowledge file | MCP resource |
 |-------|---------------|--------------|
+| **Building blocks (definitions, regions, pads, XML)** | `vl-building-blocks` | — |
+| **Common graphs (pin-level patterns)** | `vl-common-graphs` | — |
+| **Big project scaffolding** | `vl-project-architecture` | — |
 | VL language (nodes, patches, regions, types) | `gray-book-language` | `vvvv://knowledge/gray-book/language` |
 | .vl XML format (complete reference) | `vl-file-format` | `vvvv://knowledge/file-format` |
 | Libraries (CoreLib, Stride, collections, reactive) | `gray-book-libraries` | `vvvv://knowledge/gray-book/libraries` |
@@ -153,3 +164,4 @@ Key categories: `Stride` (SceneWindow, RootScene), `Stride.Models`, `Stride.Mate
 | Troubleshooting, common errors | `vvvv-troubleshooting` | `vvvv://knowledge/troubleshooting` |
 | Getting started, intro for .NET devs | `gray-book-getting-started` | `vvvv://knowledge/gray-book/getting-started` |
 | HDE (editor, node browser, debugging) | `gray-book-hde` | `vvvv://knowledge/gray-book/hde` |
+| **vvvv internals (bridge, reflection, live session) — ADVANCED** | `vvvv-internals-advanced` | — |

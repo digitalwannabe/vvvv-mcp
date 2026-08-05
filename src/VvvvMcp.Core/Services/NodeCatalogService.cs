@@ -196,6 +196,48 @@ public class NodeCatalogService
             .ToList();
     }
 
+    /// <summary>
+    /// Tolerant lookup for user/agent-supplied names:
+    /// exact name → exact full name ("Stride.Models.Box") → full name with variant
+    /// ("Rotation (Successive)") → full name suffix (".Box") → name contains.
+    /// </summary>
+    public List<VvvvNode> FindTolerant(string name)
+    {
+        EnsureLoaded();
+
+        var exact = GetByName(name);
+        if (exact.Count > 0) return exact;
+
+        if (_fullNameIndex.TryGetValue(name, out var byFullName))
+            return byFullName;
+
+        // "Rotation (Successive)" style: FullName ends with the variant form
+        var variant = _catalog!.Nodes
+            .Where(n => n.FullName.EndsWith($".{name}", StringComparison.OrdinalIgnoreCase)
+                     || n.FullName.Equals(name, StringComparison.OrdinalIgnoreCase)
+                     || n.FullName.EndsWith($" ({name})", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (variant.Count > 0) return variant;
+
+        // Name with variant stripped: "Rotation (Successive)" → "Rotation"
+        var paren = name.IndexOf(" (", StringComparison.Ordinal);
+        if (paren > 0)
+        {
+            var baseName = name[..paren];
+            var variantName = name[(paren + 2)..].TrimEnd(')');
+            var matches = _catalog!.Nodes
+                .Where(n => n.Name.Equals(baseName, StringComparison.OrdinalIgnoreCase)
+                         && n.FullName.Contains($"({variantName})", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (matches.Count > 0) return matches;
+        }
+
+        return _catalog!.Nodes
+            .Where(n => n.Name.Contains(name, StringComparison.OrdinalIgnoreCase))
+            .Take(20)
+            .ToList();
+    }
+
     /// <summary>Find nodes by full name (Category.Name), optionally scoped to a package.</summary>
     public List<VvvvNode> GetByFullName(string fullName, string? package = null)
     {

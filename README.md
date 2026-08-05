@@ -65,16 +65,6 @@ vvvv-mcp --setup   # re-run if paths changed
 nuget install VL.MCP.HDE
 ```
 
-In your vvvv startup arguments:
-```
---package-repositories "path/to/packages" --editable-packages "VL.MCP.HDE"
-```
-
-Dependencies (installed automatically via NuGet):
-- `VL.CoreLib` — vvvv core
-- `VL.HDE` — editor extension API
-- `VL.CEF` + `VL.CEF.Skia` — Chromium browser rendering (for Chat mode)
-
 ### Bridge mode (`Alt+B`)
 
 Starts an HTTP server inside vvvv at `localhost:7123`. External MCP clients connect to it directly. The bridge exposes:
@@ -109,13 +99,13 @@ Launches [Open WebUI](https://github.com/open-webui/open-webui) as an embedded b
 The vvvv MCP server (`http://localhost:7123/mcp`) is automatically registered in Open WebUI on first launch. To use it in a conversation:
 - Click the **Tool** button in the chat input bar → toggle on **vvvv-mcp**
 
-To activate tools by default for a model (so you don't need to click `+` every time):
+To activate tools by default for a model (so you don't need to click **Tool** every time):
 1. Open WebUI → **Workspace → Models**
 2. Edit the model you want to use
 3. Under **Tools**, enable **vvvv-mcp**
 4. Save — tools will now be active in every new chat with that model
 
-**Attribution:** Chat mode is powered by [Open WebUI](https://github.com/open-webui/open-webui) (MIT License). Open WebUI is an independent project and is not affiliated with this repository.
+**Attribution:** Chat mode is powered by [Open WebUI](https://github.com/open-webui/open-webui) (BSD-3-Clause). Open WebUI is an independent project and is not affiliated with this repository.
 
 ---
 
@@ -125,9 +115,12 @@ To activate tools by default for a model (so you don't need to click `+` every t
 
 | Tool | Description |
 |---|---|
-| `search_nodes` | Search by name, category, or keyword. Returns nodes ranked by relevance with pins, types, and summaries. |
-| `get_node_details` | Full details for a node by exact name — all pins, types, defaults, source package. |
-| `list_categories` | All category namespaces (e.g. `3D.Transform`, `Stride.Models`), optionally filtered by prefix. |
+| `search_nodes_live` | **(bridge)** Search the LIVE node registry of the running vvvv — exact pins, real types, only nodes actually placeable in the session. |
+| `get_node_details_live` | **(bridge)** Exact pin names, real types, defaults, visibility for one node from the live registry. |
+| `refresh_live_nodes` | **(bridge)** Rebuild the live node snapshot (e.g. after installing a pack). |
+| `search_nodes` | Offline catalog search (two-phase: precise AND, then OR fallback). |
+| `get_node_details` | Offline catalog details for a node by name (tolerant: variants, full names). |
+| `list_categories` | All category namespaces, optionally filtered by prefix. |
 | `list_packages` | All packages in the catalog. |
 
 ### Knowledge Base
@@ -152,8 +145,9 @@ To activate tools by default for a model (so you don't need to click `+` every t
 
 | Tool | Description |
 |---|---|
-| `create_patch` | Create a new empty `.vl` patch with specified category and dependencies. |
-| `add_node` | Add a node to a patch by name, category, and dependency. Returns node ID and pin IDs for wiring. |
+| **`build_patch`** | **The primary tool.** Builds a whole connected subgraph in ONE call: resolves nodes (live registry first), adds NuGet deps, declares pins with correct visibility, auto-layouts by dataflow, wires all links (incl. pin-group auto-indexing and links into existing pins), saves, reloads in vvvv, reports compile errors. |
+| `create_patch` | Create a new empty `.vl` patch. `mode: "file"` (from scratch) or `"editor"` (also opens in vvvv). |
+| `add_node` | Add a single node — pins auto-declared from the live registry/catalog, dependency auto-added, optional verify. |
 | `add_pad` | Add a value pad (IOBox) to a patch with an optional initial value. |
 | `connect_pins` | Connect an output pin (or pad) to an input pin. |
 | `remove_node` | Remove a node and all its connected links from a patch. |
@@ -375,10 +369,17 @@ dotnet run --project VVVVNodeAnalyzer/VVVVNodeAnalyzer.csproj -- batch packs-com
 
 ## License
 
-MIT
+**Dual license** — see [LICENSE.md](LICENSE.md):
+
+- **Free** for non-commercial use (hobbyists, students, educators, research, open-source) under the [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/) terms.
+- **Commercial use** (any use by or on behalf of a business, paid client work, internal business tooling, commercial products/services) requires a paid license — individual / studio (seat-based) / enterprise via [polar.sh](https://polar.sh) (link at release).
+
+Note: vvvv gamma itself is a separate product of the vvvv group with its own licensing — this tool does not replace or include it.
 
 ### Third-party attributions
 
-- **[Open WebUI](https://github.com/open-webui/open-webui)** (MIT) — used in Chat mode via `VL.MCP.HDE`. Open WebUI is an independent open-source project. This repository does not modify or redistribute Open WebUI; it launches it as a separate process via `uv`.
-- **[tebjan/vvvv-skills](https://github.com/tebjan/vvvv-skills)** — knowledge base content (MIT)
-- **[vvvv/The-Gray-Book](https://github.com/vvvv/The-Gray-Book)** — official vvvv documentation (CC-BY-4.0)
+See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for the full list. In short:
+
+- **[Open WebUI](https://github.com/open-webui/open-webui)** (BSD-3-Clause + branding terms) — used in Chat mode via `VL.MCP.HDE`; launched as a separate process via `uv`, not modified or redistributed.
+- **[tebjan/vvvv-skills](https://github.com/tebjan/vvvv-skills)** — knowledge base content (**CC BY-SA 4.0**); derived knowledge files remain CC BY-SA with attribution.
+- **[vvvv/The-Gray-Book](https://github.com/vvvv/The-Gray-Book)** — official vvvv documentation by the vvvv group; condensed here with attribution.

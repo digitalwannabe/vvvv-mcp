@@ -215,7 +215,7 @@
                   <FullNameCategoryReference ID="Primitive" />
                 </p:TypeAnnotation>
               </Pad>
-              <Pad Id="ChatUrlPadFixed0000000001" Comment="Chat URL" Bounds="732,501,160,15" ShowValueBox="true" isIOBox="true" Value="http://localhost:7125">
+              <Pad Id="ChatUrlPadFixed0000000001" Comment="Chat URL" Bounds="732,501,160,15" ShowValueBox="true" isIOBox="true" Value="http://localhost:7123/chat">
                 <p:TypeAnnotation LastCategoryFullName="Primitive" LastDependency="CoreLibBasics.vl">
                   <Choice Kind="TypeFlag" Name="String" />
                 </p:TypeAnnotation>
