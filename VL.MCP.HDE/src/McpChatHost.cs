@@ -146,8 +146,8 @@ internal class McpChatHost : IDisposable
         psi.Environment["DATA_DIR"]        = dataDir;   // explicit: always same location
 
         _process = new Process { StartInfo = psi, EnableRaisingEvents = true };
-        _process.OutputDataReceived += (_, e) => { if (e.Data is not null) Console.WriteLine($"[OpenWebUI] {e.Data}"); };
-        _process.ErrorDataReceived  += (_, e) => { if (e.Data is not null) Console.Error.WriteLine($"[OpenWebUI] {e.Data}"); };
+        _process.OutputDataReceived += (_, e) => ForwardOpenWebUiLine(e.Data, isError: false);
+        _process.ErrorDataReceived  += (_, e) => ForwardOpenWebUiLine(e.Data, isError: true);
         _process.Exited += (_, _) =>
         {
             if (_currentEnabled) _lastError = "Open WebUI exited unexpectedly.";
@@ -257,6 +257,47 @@ internal class McpChatHost : IDisposable
             if (File.Exists(full)) return full;
         }
         return null;
+    }
+
+    // ── Open WebUI output handling ────────────────────────────────────────────
+    // Every line goes into a rolling buffer (readable via /api/chat/log for debugging).
+    // Only error-ish lines are forwarded to the vvvv console — OWUI's startup logging
+    // (alembic migrations, CORS notice, embedding-model load report) is benign but noisy.
+
+    private readonly object _logGate = new();
+    private readonly Queue<string> _owuiLog = new();
+    private const int OwuiLogCapacity = 500;
+
+    /// <summary>Rolling buffer of all Open WebUI output lines (for /api/chat/log).</summary>
+    public string[] GetOpenWebUiLog()
+    {
+        lock (_logGate) return _owuiLog.ToArray();
+    }
+
+    private void ForwardOpenWebUiLine(string? line, bool isError)
+    {
+        if (line is null) return;
+
+        lock (_logGate)
+        {
+            _owuiLog.Enqueue(line);
+            while (_owuiLog.Count > OwuiLogCapacity) _owuiLog.Dequeue();
+        }
+
+        if (isError || LooksImportant(line))
+            Console.WriteLine($"[OpenWebUI] {line}");
+    }
+
+    private static bool LooksImportant(string line)
+    {
+        return line.Contains("Traceback", StringComparison.Ordinal)
+            || line.Contains("ERROR", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("CRITICAL", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("FATAL", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("Exception", StringComparison.Ordinal)
+            || line.Contains("Failed", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("bind", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("error", StringComparison.Ordinal);
     }
 
     // ── Port + process cleanup ────────────────────────────────────────────────

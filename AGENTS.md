@@ -40,6 +40,9 @@ Bridge (VL.MCP.HDE/src):
   to OWUI when up, else serves the placeholder page (polls same-origin `/api/chat/status`,
   reloads on ready — never navigate cross-origin from CEF client-side). Chat host sets
   `WEBUI_AUTH=False`/`ENABLE_SIGNUP=False` (else OWUI shows an admin-setup prompt).
+  Loading `/chat` (a chat window opening) sets `_chatWanted` → auto-starts OWUI even
+  without Alt+C (handles vvvv-restart-with-chat-open). OWUI console output: only error-ish
+  lines forward to the vvvv console; all lines buffered → `GET /api/chat/log`.
 
 ## Ground-truth rules learned the hard way
 

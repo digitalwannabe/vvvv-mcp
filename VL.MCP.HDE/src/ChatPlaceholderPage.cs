@@ -57,8 +57,8 @@ internal static class ChatPlaceholderPage
 </style>
 </head>
 <body>
-  <div class="logo">γ</div>
-  <h1>Setting up your vvvv vibe-coding environment</h1>
+  <div class="logo">/</div>
+  <h1>Setting up your vvvvibe-coding environment</h1>
   <p class="sub">Sit back and relax — the chat is starting up.<br>
   First launch can take a moment while the AI backend initializes.</p>
   <div class="bar"></div>

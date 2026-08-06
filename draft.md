@@ -647,6 +647,8 @@ Commercial: Any use by or on behalf of a business, paid client work, internal bu
 
 does the ocr script pick up changed images with same, ie check mod date?
 
+new tool: upgrade/update a package (for package devs)
+
 
 add html for any time openwebui is not reachable, especially on first start we have something nice like "hi, sit back and relax while we set up your new vvvvibecoding environment"
 
@@ -657,6 +659,9 @@ graphify to understand patches faster?
 
 
 would it help to also ship a skill which tells the mcp how to use its tools? over-engineered?
+
+
+
 
 
 
@@ -869,6 +874,25 @@ dispose nodes on recompile) — dev-loop-only issue, not a user scenario.
 **Bridge is confirmed 100% independent of chat** (fully functional with OWUI down: ping,
 state, documents, live node catalog, build_patch). The old "only works when chat runs" was
 the pre-IDisposable port-hostage bug.
+
+---
+
+# 2026-08-06 — chat auto-start + console cleanup (DONE, verified live)
+
+7. **Auto-start on reopen**: closing vvvv with chat open reopens the chat window but OWUI
+   didn't start until Alt+C. Fix: the chat window loads `/chat` on open → the bridge sets a
+   `_chatWanted` flag → chat host starts OWUI (OR'd with the Alt+C toggle). Verified: hitting
+   /chat spawned OWUI, it booted, /chat then 302-redirects, /api/chat/status ready:true.
+   On vvvv restart with chat persisted: window opens → /chat → OWUI auto-starts → placeholder
+   during the ~70s boot → auto-redirect. No Alt+C needed.
+8. **Startup timing**: the ~2min is NOT re-downloading (HF embedding model all-MiniLM-L6-v2
+   ~90MB is cached in ~/.cache/huggingface; uv deps cached in %LOCALAPPDATA%\uv). It's Open
+   WebUI's own app init (~73s from secret-key to server-start) + uv resolution. Kept RAG
+   enabled (user wants it). Nothing to fix — it's OWUI's inherent startup cost.
+9. **Console spam**: the vvvv console warnings/errors were ALL benign OWUI startup noise
+   (alembic, CORS notice, USER_AGENT, embedding load report). Fix: chat host now forwards
+   only error-ish lines to the vvvv console; ALL lines go to a rolling buffer readable via
+   the new `GET /api/chat/log` endpoint (debugging without console spam).
 
 ---
 

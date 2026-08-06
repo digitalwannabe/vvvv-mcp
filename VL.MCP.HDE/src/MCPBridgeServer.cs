@@ -41,6 +41,9 @@ internal static class BridgeVersion
     // a momentary bang and a persistent bool work as input
     private bool _chatEnabled;
     private bool _prevOpenChat;
+    // Set true when a chat window loads /chat — makes a persisted chat window
+    // auto-start Open WebUI after a vvvv restart (no Alt+C needed).
+    private bool _chatWanted;
     
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -130,12 +133,15 @@ internal static class BridgeVersion
         if (openChat && !_prevOpenChat) _chatEnabled = !_chatEnabled;
         _prevOpenChat = openChat;
 
-        // Drive chat host — server must be up first
+        // Drive chat host — server must be up first.
+        // The chat host runs when EITHER the chat is toggled on (Alt+C) OR a chat
+        // window was opened (loading /chat sets _chatWanted — this is what makes a
+        // persisted chat window auto-start Open WebUI after a vvvv restart).
         var chatState = (IsReady: false, IsStarting: false, LastError: (string?)null, ChatUrl: $"http://localhost:{chatPort}");
         if (isRunning)
         {
             _chatHost ??= new McpChatHost();
-            chatState = _chatHost.Update(_chatEnabled, chatPort, port);
+            chatState = _chatHost.Update(_chatEnabled || _chatWanted, chatPort, port);
         }
 
         return (port, isRunning, lastError, chatState.IsReady);
@@ -210,6 +216,10 @@ internal static class BridgeVersion
             // ── Chat placeholder / redirect ──
             if (path == "/chat" && method == "GET")
             {
+                // A chat window opened → the user wants chat. Trigger the chat host
+                // startup (idempotent; the startup lock serializes concurrent calls).
+                _chatWanted = true;
+
                 // If Open WebUI is already up, go straight there (302) — much more
                 // robust than client-side polling from inside CEF. Otherwise serve
                 // the friendly "setting up" page which keeps polling as a backup.
@@ -227,8 +237,7 @@ internal static class BridgeVersion
 
             // ── Chat readiness probe (same-origin, used by the placeholder page) ──
             if (path == "/api/chat/status" && method == "GET")
-            {
-                var chatUrl = _chatHost?.ChatUrl ?? "http://localhost:7125";
+            {                var chatUrl = _chatHost?.ChatUrl ?? "http://localhost:7125";
                 var up = await IsChatUpAsync(chatUrl);
                 // Report ACTUAL reachability, not just the host's internal start state —
                 // Open WebUI may be running even when this host didn't start it (adopted
@@ -240,6 +249,16 @@ internal static class BridgeVersion
                     status = up ? "ready" : (_chatHost?.Status ?? "setting up…"),
                     error = up ? null : _chatHost?.LastError
                 });
+                return;
+            }
+
+            // ── Open WebUI output buffer (for debugging startup without console spam) ──
+            if (path == "/api/chat/log" && method == "GET")
+            {
+                var limitStr = request.QueryString["limit"];
+                var limit = int.TryParse(limitStr, out var l) ? Math.Clamp(l, 1, 500) : 100;
+                var lines = _chatHost?.GetOpenWebUiLog() ?? Array.Empty<string>();
+                WriteJson(response, new { count = lines.Length, lines = lines.TakeLast(limit) });
                 return;
             }
 
