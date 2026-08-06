@@ -652,6 +652,8 @@ add html for any time openwebui is not reachable, especially on first start we h
 
 graphify to understand patches faster?
 
+- node sizing: either we find a way to deduct it from some patches and node name length/pin count, or we'd have to add it to our node database (for this, we would need to find every node in a patch, probably would never be complete)
+
 
 
 would it help to also ship a skill which tells the mcp how to use its tools? over-engineered?

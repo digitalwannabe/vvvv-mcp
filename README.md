@@ -233,6 +233,7 @@ npx @modelcontextprotocol/inspector -- dotnet src/VvvvMcp/bin/Debug/net8.0/VvvvM
 ```powershell
 # 1. Bump version in src/VvvvMcp/VvvvMcp.csproj
 # 2. Commit, tag, push — GitHub Actions publishes to NuGet.org automatically
+#    (or push the version bump on main without a tag; the workflow now watches the csproj path too)
 git add -A && git commit -m "release 0.x.0"
 git tag v0.x.0
 git push origin main --tags
@@ -243,6 +244,7 @@ git push origin main --tags
 ```powershell
 # 1. Bump version in VL.MCP.HDE/VL.MCP.HDE.nuspec
 # 2. Commit, tag, push — GitHub Actions workflow publishes to NuGet.org
+#    (or push the version bump on main without a tag; the workflow now watches the nuspec path too)
 git add -A && git commit -m "VL.MCP.HDE 0.x.0"
 git tag vl-0.x.0
 git push origin main --tags

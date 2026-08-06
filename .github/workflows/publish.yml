@@ -10,10 +10,14 @@ on:
         default: ""
 
   # Automatic trigger on version tags: git tag v1.0.0 && git push --tags
-  # Pattern v[0-9]* avoids matching vl-* tags used for VL.MCP.HDE releases
+  # Fallback on main pushes that touch the csproj so version bumps still publish even if a tag event is missed.
   push:
+    branches:
+      - main
     tags:
       - "v[0-9]*"
+    paths:
+      - "src/VvvvMcp/VvvvMcp.csproj"
 
 jobs:
   publish:

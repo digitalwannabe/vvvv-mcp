@@ -2,8 +2,12 @@ name: publish-VL-package
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'vl-*'   # trigger on tags like vl-0.1.0-preview or vl-0.2.0
+    paths:
+      - "VL.MCP.HDE/VL.MCP.HDE.nuspec"
 
   workflow_dispatch:
     inputs:
