@@ -645,9 +645,6 @@ Free: Hobbyists, students, educators, research, and open-source projects.
 Commercial: Any use by or on behalf of a business, paid client work, internal business tooling, or products/services offered commercially.
 
 
-looking in the future we should probably keep this repo open source, but do a private repo for our techniques to extract value from documentations, files, libraries......
-
-
 does the ocr script pick up changed images with same, ie check mod date?
 
 
