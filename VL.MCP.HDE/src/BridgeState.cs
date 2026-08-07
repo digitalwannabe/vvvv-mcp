@@ -307,11 +307,12 @@ internal class BridgeState
 
         var hadUnsavedChanges = doc.GetType().GetProperty("IsChanged")?.GetValue(doc) as bool? ?? false;
 
-        // ── Reload strategy: ReloadAsync → CommitDocument → caller shows the doc ──
-        // ReloadAsync returns the new immutable Document; CommitDocument wires it into
-        // DevEnvHost.CurrentSolution via ReplaceDescendent + MakeCurrent so the model
-        // is correct. The caller (HandleReload) then calls ShowDocumentOnUIThread to
-        // navigate the editor to the updated canvas — no close/reopen needed.
+        // ── Reload strategy: ReloadAsync only — no CommitDocument ───────────────
+        // Document.ReloadAsync updates DevEnvHost.CurrentSolution internally as part
+        // of its completion. Calling CommitDocument after it (ReplaceDescendent +
+        // MakeCurrent) was found to REVERT the state ReloadAsync just set — the nodes
+        // appear briefly then vanish when vvvv gets focus. Simply awaiting ReloadAsync
+        // and letting the caller call OpenCanvas is sufficient.
 
         var reloadMethod = doc.GetType().GetMethod("ReloadAsync");
         if (reloadMethod is null)
@@ -326,14 +327,9 @@ internal class BridgeState
             {
                 try
                 {
-                    object? newDoc = null;
                     if (reloadMethod.Invoke(doc, new object[] { true }) is Task t)
-                    {
                         await t;
-                        newDoc = t.GetType().GetProperty("Result")?.GetValue(t);
-                    }
-                    var err = newDoc is not null ? LivePinWriter.CommitDocument(newDoc) : "ReloadAsync returned null";
-                    tcs.SetResult(err);
+                    tcs.SetResult(null);
                 }
                 catch (Exception ex) { tcs.SetResult(ex.GetBaseException().Message); }
             }, null);
@@ -342,14 +338,9 @@ internal class BridgeState
         {
             try
             {
-                object? newDoc = null;
                 if (reloadMethod.Invoke(doc, new object[] { true }) is Task t)
-                {
                     await t;
-                    newDoc = t.GetType().GetProperty("Result")?.GetValue(t);
-                }
-                var err = newDoc is not null ? LivePinWriter.CommitDocument(newDoc) : "ReloadAsync returned null";
-                tcs.SetResult(err);
+                tcs.SetResult(null);
             }
             catch (Exception ex) { tcs.SetResult(ex.GetBaseException().Message); }
         }
