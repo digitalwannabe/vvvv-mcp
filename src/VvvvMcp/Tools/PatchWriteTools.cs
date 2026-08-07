@@ -226,6 +226,20 @@ public class PatchWriteTools
         try
         {
             var doc = _writer.LoadDocument(filePath);
+
+            // Validate: reject node IDs passed as pin IDs. Node IDs appear as the
+            // Id attribute on <Node> elements; pin IDs appear on <Pin> children.
+            // Passing a node ID silently produces an unresolvable connection in vvvv.
+            var nodeIds = doc.Descendants("Node")
+                .Select(n => n.Attribute("Id")?.Value)
+                .Where(id => id is not null)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            if (nodeIds.Contains(sourceId))
+                return new { success = false, error = $"sourceId '{sourceId}' is a NODE id, not a pin id. Use read_patch to get the actual PIN id (the 22-char Id on a <Pin> element under the node)." };
+            if (nodeIds.Contains(targetId))
+                return new { success = false, error = $"targetId '{targetId}' is a NODE id, not a pin id. Use read_patch to get the actual PIN id (the 22-char Id on a <Pin> element under the node)." };
+
             var linkId = _writer.AddLink(doc, sourceId, targetId);
             _writer.SaveDocument(doc, filePath);
             return new { success = true, linkId, sourceId, targetId };

@@ -192,6 +192,48 @@ internal class LivePinWriter
         }
     }
 
+    /// <summary>
+    /// Commits a newly reloaded Document into the live solution so the editor canvas refreshes.
+    /// Called after Document.ReloadAsync returns the new immutable Document — without this step
+    /// the new document is never wired into DevEnvHost.CurrentSolution and the editor keeps
+    /// showing the old (pre-reload) content.
+    ///
+    /// Pattern: DevEnvHost.CurrentSolution → ReplaceDescendent(newDoc) → MakeCurrent(UpdateUIAndRuntime, canvas).
+    /// The canvas is the document's ImplicitEntryPointCanvas so the editor navigates to and
+    /// refreshes the correct canvas (the Application Group canvas where nodes are placed).
+    /// Must be called on the vvvv UI thread (already the case from ReloadDocumentFromDiskAsync).
+    /// </summary>
+    internal static string? CommitDocument(object newDoc)
+    {
+        try
+        {
+            if (!Discover())
+                return $"editor API discovery failed: {_discoveryError}";
+
+            var solution = _currentSolutionProp!.GetValue(_devEnvHost);
+            if (solution is null) return "no current solution";
+
+            var replaceMethod = _replaceDescendent!;
+            if (replaceMethod.ContainsGenericParameters)
+                replaceMethod = replaceMethod.MakeGenericMethod(solution.GetType());
+
+            var nextSolution = replaceMethod.Invoke(null, new[] { solution, newDoc });
+
+            // Use the document's ImplicitEntryPointCanvas so vvvv knows which canvas to
+            // refresh. Without this (null), MakeCurrent has no canvas to navigate to and
+            // the editor display is not updated even though the model IS committed.
+            var canvas = ReadMember(newDoc, "ImplicitEntryPointCanvas")
+                      ?? ReadMember(nextSolution, "Canvas");
+
+            _makeCurrent!.Invoke(null, new object?[] { nextSolution, SolutionUpdateKind.UpdateUIAndRuntime, canvas });
+            return null; // success
+        }
+        catch (Exception ex)
+        {
+            return ex.GetBaseException().Message;
+        }
+    }
+
     // WithValue is found per-pin-type (DataHub.WithValue)
     private static MethodInfo? FindWithValue(object pin)
     {

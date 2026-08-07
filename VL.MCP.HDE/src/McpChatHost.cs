@@ -130,6 +130,24 @@ internal class McpChatHost : IDisposable
             "vvvv-mcp", "openwebui-data");
         Directory.CreateDirectory(dataDir);
 
+        // Inject an aiodns stub via PYTHONPATH so aiohttp uses ThreadedResolver instead of
+        // AsyncResolver (aiodns/c-ares). c-ares reads DNS server addresses once at process
+        // initialization from the Windows registry and never refreshes them — after a VPN
+        // connect/disconnect cycle the captured addresses become stale and external DNS stops
+        // resolving. ThreadedResolver calls getaddrinfo() per-request, which always reads the
+        // current system DNS and is immune to this problem. The stub just raises ImportError;
+        // aiohttp's "try: import aiodns" check then falls back to ThreadedResolver automatically,
+        // identical to the state where aiodns is not installed at all.
+        var stubDir = Path.Combine(dataDir, "python-overrides");
+        Directory.CreateDirectory(stubDir);
+        File.WriteAllText(Path.Combine(stubDir, "aiodns.py"),
+            "# vvvv-mcp stub: prevents aiodns/c-ares from caching stale DNS after VPN changes.\n" +
+            "# aiohttp falls back to ThreadedResolver (getaddrinfo per request) which is immune.\n" +
+            "raise ImportError(\n" +
+            "    'aiodns disabled by vvvv-mcp to prevent stale DNS after VPN changes; '\n" +
+            "    'aiohttp will use ThreadedResolver (system getaddrinfo) instead.'\n" +
+            ")\n");
+
         // uvx installs open-webui once into a dedicated tool env and reuses it —
         // much faster on subsequent starts, no re-resolve, no re-download.
         var psi = new ProcessStartInfo(uv, $"run --with open-webui open-webui serve --port {_chatPort}")
@@ -144,6 +162,12 @@ internal class McpChatHost : IDisposable
         psi.Environment["ENABLE_SIGNUP"]   = "False";
         psi.Environment["OLLAMA_BASE_URL"] = "http://localhost:11434";
         psi.Environment["DATA_DIR"]        = dataDir;   // explicit: always same location
+
+        // Prepend our stub directory to PYTHONPATH so the aiodns stub shadows the real package.
+        psi.Environment.TryGetValue("PYTHONPATH", out var existingPythonPath);
+        psi.Environment["PYTHONPATH"] = string.IsNullOrEmpty(existingPythonPath)
+            ? stubDir
+            : $"{stubDir};{existingPythonPath}";
 
         _process = new Process { StartInfo = psi, EnableRaisingEvents = true };
         _process.OutputDataReceived += (_, e) => ForwardOpenWebUiLine(e.Data, isError: false);

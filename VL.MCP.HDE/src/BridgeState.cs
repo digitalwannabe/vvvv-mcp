@@ -290,7 +290,11 @@ internal class BridgeState
             foreach (var d in docsEnum ?? Enumerable.Empty<object>())
             {
                 var fp = d.GetType().GetProperty("FilePath")?.GetValue(d)?.ToString();
-                if (string.Equals(fp, filePath, StringComparison.OrdinalIgnoreCase)) { doc = d; break; }
+                if (string.Equals(fp, filePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    doc = d;
+                    break;
+                }
             }
         }
         catch (Exception ex)
@@ -302,11 +306,17 @@ internal class BridgeState
             return new DocumentReloadResult(); // not open in the session
 
         var hadUnsavedChanges = doc.GetType().GetProperty("IsChanged")?.GetValue(doc) as bool? ?? false;
+
+        // ── Reload strategy: ReloadAsync → CommitDocument → caller shows the doc ──
+        // ReloadAsync returns the new immutable Document; CommitDocument wires it into
+        // DevEnvHost.CurrentSolution via ReplaceDescendent + MakeCurrent so the model
+        // is correct. The caller (HandleReload) then calls ShowDocumentOnUIThread to
+        // navigate the editor to the updated canvas — no close/reopen needed.
+
         var reloadMethod = doc.GetType().GetMethod("ReloadAsync");
         if (reloadMethod is null)
             return new DocumentReloadResult { Found = true, Error = "Document.ReloadAsync not found" };
 
-        // Marshal onto the vvvv main thread (VL model APIs are main-thread only)
         var syncCtx = appHost?.SynchronizationContext;
         var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -316,9 +326,14 @@ internal class BridgeState
             {
                 try
                 {
+                    object? newDoc = null;
                     if (reloadMethod.Invoke(doc, new object[] { true }) is Task t)
+                    {
                         await t;
-                    tcs.SetResult(null);
+                        newDoc = t.GetType().GetProperty("Result")?.GetValue(t);
+                    }
+                    var err = newDoc is not null ? LivePinWriter.CommitDocument(newDoc) : "ReloadAsync returned null";
+                    tcs.SetResult(err);
                 }
                 catch (Exception ex) { tcs.SetResult(ex.GetBaseException().Message); }
             }, null);
@@ -327,9 +342,14 @@ internal class BridgeState
         {
             try
             {
+                object? newDoc = null;
                 if (reloadMethod.Invoke(doc, new object[] { true }) is Task t)
+                {
                     await t;
-                tcs.SetResult(null);
+                    newDoc = t.GetType().GetProperty("Result")?.GetValue(t);
+                }
+                var err = newDoc is not null ? LivePinWriter.CommitDocument(newDoc) : "ReloadAsync returned null";
+                tcs.SetResult(err);
             }
             catch (Exception ex) { tcs.SetResult(ex.GetBaseException().Message); }
         }
@@ -337,10 +357,10 @@ internal class BridgeState
         var error = await tcs.Task;
         return new DocumentReloadResult
         {
-            Found = true,
-            Reloaded = error is null,
+            Found      = true,
+            Reloaded   = error is null,
             HadUnsavedChanges = hadUnsavedChanges,
-            Error = error
+            Error      = error
         };
     }
 

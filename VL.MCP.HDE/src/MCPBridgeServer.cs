@@ -484,6 +484,36 @@ internal static class BridgeVersion
         return success;
     }
 
+    /// <summary>
+    /// Navigate the editor directly to a specific canvas (e.g. the Application Group canvas
+    /// where build_patch places nodes). Uses EditorControl.OpenCanvas which is more precise
+    /// than ShowDocument — it opens the exact canvas rather than the document's default view.
+    /// </summary>
+    private void OpenCanvasOnUIThread(object canvas)
+    {
+        var done = new ManualResetEventSlim(false);
+        PostToUIThread(() =>
+        {
+            try
+            {
+                var session = GetSession();
+                var mainForm = session?.GetType().GetProperty("MainForm")?.GetValue(session);
+                var editorControl = mainForm?.GetType().GetProperty("EditorControl")?.GetValue(mainForm);
+                if (editorControl is null) { done.Set(); return; }
+
+                // OpenCanvas(Canvas canvas, Element focusedElement, Boolean show)
+                var openMethod = editorControl.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                    .FirstOrDefault(m => m.Name == "OpenCanvas" && m.GetParameters().Length == 3
+                                      && m.GetParameters()[2].ParameterType == typeof(bool));
+
+                openMethod?.Invoke(editorControl, new object?[] { canvas, null, true });
+            }
+            catch { }
+            finally { done.Set(); }
+        });
+        done.Wait(TimeSpan.FromSeconds(3));
+    }
+
     private object HandleNewDocument(HttpListenerRequest request)
     {
         var body = ReadBody(request);
@@ -758,11 +788,42 @@ internal static class BridgeVersion
 
         if (result.Found)
         {
+            // CommitDocument updated DevEnvHost.CurrentSolution with the new nodes.
+            // Navigate directly to the document's ImplicitEntryPointCanvas (the Application
+            // Group canvas where build_patch places nodes) via OpenCanvas. This is more
+            // precise than ShowDocument(doc, 0) which navigates to the document-level view
+            // and doesn't show nodes placed in the Group canvas.
+            if (result.Reloaded)
+            {
+                var session = GetSession();
+                if (session is not null)
+                {
+                    var solution = session.GetType().GetProperty("CurrentSolution")?.GetValue(session);
+                    var docsEnum = solution?.GetType().GetProperty("Documents")?.GetValue(solution) as IEnumerable;
+                    if (docsEnum is not null)
+                    {
+                        foreach (var d in docsEnum)
+                        {
+                            var fp = d.GetType().GetProperty("FilePath")?.GetValue(d)?.ToString();
+                            if (string.Equals(fp, filePath, StringComparison.OrdinalIgnoreCase))
+                            {
+                                var canvas = d.GetType().GetProperty("ImplicitEntryPointCanvas")?.GetValue(d);
+                                if (canvas is not null)
+                                    OpenCanvasOnUIThread(canvas);
+                                else
+                                    ShowDocumentOnUIThread(session, d); // fallback
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
             return new
             {
                 success = result.Reloaded,
                 filePath,
-                method = "Document.ReloadAsync",
+                method = "ReloadAsync + CommitDocument + OpenCanvas",
                 discardedEditorChanges = result.HadUnsavedChanges ? true : (bool?)null,
                 error = result.Error
             };
@@ -1550,8 +1611,44 @@ internal static class BridgeVersion
     private object HandleReloadDirect(string filePath)
     {
         if (!File.Exists(filePath)) return new { success = false, error = $"Not found: {filePath}" };
+
+        DocumentReloadResult result;
+        try
+        {
+            result = _state.ReloadDocumentFromDiskAsync(filePath, _nodeContext?.AppHost)
+                           .GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            return new { success = false, error = ex.Message };
+        }
+
+        if (result.Found && result.Reloaded)
+        {
+            // Same OpenCanvas approach as HandleReload
+            var session = GetSession();
+            if (session is not null)
+            {
+                var solution = session.GetType().GetProperty("CurrentSolution")?.GetValue(session);
+                var docsEnum = solution?.GetType().GetProperty("Documents")?.GetValue(solution) as IEnumerable;
+                if (docsEnum is not null)
+                    foreach (var d in docsEnum)
+                    {
+                        var fp = d.GetType().GetProperty("FilePath")?.GetValue(d)?.ToString();
+                        if (string.Equals(fp, filePath, StringComparison.OrdinalIgnoreCase))
+                        {
+                            var canvas = d.GetType().GetProperty("ImplicitEntryPointCanvas")?.GetValue(d);
+                            if (canvas is not null) OpenCanvasOnUIThread(canvas);
+                            else ShowDocumentOnUIThread(session, d);
+                            break;
+                        }
+                    }
+            }
+            return new { success = true, filePath, method = "ReloadAsync + CommitDocument + OpenCanvas" };
+        }
+
         File.SetLastWriteTimeUtc(filePath, DateTime.UtcNow);
-        return new { success = true, filePath };
+        return new { success = false, filePath, error = result.Error ?? "document not in session" };
     }
     private object HandleUndoDirect() => HandleUndoRedo(null!, isUndo: true);
     private object HandleRedoDirect()  => HandleUndoRedo(null!, isUndo: false);

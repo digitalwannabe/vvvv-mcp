@@ -115,8 +115,33 @@ public class PatchBuilderService
         }
         else
         {
-            doc = _writer.CreateDocument();
-            created = true;
+            // File doesn't exist on disk yet. vvvv may already have it open as an
+            // unsaved new document (the user created it in the editor but hasn't
+            // pressed Ctrl+S yet). If we call CreateDocument() it generates a fresh
+            // document ID that differs from vvvv's in-memory document. When we then
+            // call ReloadAsync, vvvv sees an ID mismatch and silently refuses to update
+            // the editor — the nodes end up in the file but are never shown.
+            //
+            // Fix: ask the bridge to save the in-memory document first. That writes the
+            // file with vvvv's own document ID. We then load THAT file so our edits
+            // carry the correct ID and ReloadAsync works normally.
+            // If the bridge isn't available or vvvv doesn't have that document open,
+            // the save returns a failure and we fall back to CreateDocument().
+            var preSaved = false;
+            if (await _bridge.CheckAvailabilityAsync())
+            {
+                var saveResult = await _bridge.SaveDocumentAsync(spec.FilePath);
+                if (saveResult?.Success == true && File.Exists(spec.FilePath))
+                    preSaved = true;
+            }
+
+            if (preSaved)
+                doc = _writer.LoadDocument(spec.FilePath);
+            else
+            {
+                doc = _writer.CreateDocument();
+                created = true;
+            }
         }
 
         // ── 2. Resolve all nodes (atomic: any failure aborts before writing) ──
@@ -317,8 +342,8 @@ public class PatchBuilderService
 
         foreach (var link in spec.Links)
         {
-            var fromId = ResolveEndpoint(link.From, isSource: true, nodeIds, padIds, pinIds, pinKinds, resolved, usedTargetPins, pendingGroupPins, out var fromErr);
-            var toId = ResolveEndpoint(link.To, isSource: false, nodeIds, padIds, pinIds, pinKinds, resolved, usedTargetPins, pendingGroupPins, out var toErr);
+            var fromId = ResolveEndpoint(link.From, isSource: true, nodeIds, padIds, pinIds, pinKinds, resolved, usedTargetPins, pendingGroupPins, doc, out var fromErr);
+            var toId = ResolveEndpoint(link.To, isSource: false, nodeIds, padIds, pinIds, pinKinds, resolved, usedTargetPins, pendingGroupPins, doc, out var toErr);
 
             if (fromId is null || toId is null)
             {
@@ -503,6 +528,7 @@ public class PatchBuilderService
         Dictionary<string, ResolvedNode> resolved,
         Dictionary<string, HashSet<string>> usedTargetPins,
         List<(string NodeId, string PinName, string PinId)> pendingGroupPins,
+        XDocument doc,
         out string? error)
     {
         error = null;
@@ -521,9 +547,34 @@ public class PatchBuilderService
 
         if (!nodeIds.TryGetValue(key, out var nodeId))
         {
-            // Not a spec key — treat as a raw existing pin/pad id (from read_patch)
+            // Not a spec key — two fallbacks:
+            // 1. Raw 22-char pin/pad id with no dot (from read_patch output) → use as-is.
+            // 2. nodeId.PinName format where the node is already in the document (follow-up
+            //    build_patch calls that reference nodes from a previous call by their XML Id).
             if (dot < 0 && endpoint.Length >= 15)
                 return endpoint;
+
+            if (dot > 0 && key.Length >= 15)
+            {
+                // Look up the node in the existing document and find the pin by name
+                var existingNode = doc.Root!.Descendants("Node")
+                    .FirstOrDefault(n => n.Attribute("Id")?.Value == key);
+                if (existingNode is not null)
+                {
+                    var pin = existingNode.Elements("Pin")
+                        .FirstOrDefault(p => p.Attribute("Name")?.Value?.Equals(pinName, StringComparison.OrdinalIgnoreCase) == true);
+                    if (pin is not null)
+                        return pin.Attribute("Id")?.Value;
+                    // List available pins to help the caller
+                    var existingPins = existingNode.Elements("Pin")
+                        .Select(p => p.Attribute("Name")?.Value)
+                        .Where(n => n is not null)
+                        .ToList();
+                    error = $"Pin '{pinName}' not found on existing node '{key}'. Available: {string.Join(", ", existingPins)}";
+                    return null;
+                }
+            }
+
             error = $"'{key}' is neither a node/pad key from this spec nor a known pin id";
             return null;
         }
