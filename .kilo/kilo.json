@@ -3,7 +3,7 @@
   "mcp": {
     "vvvv": {
       "type": "local",
-      "command": ["vvvv-mcp"]
+      "command": ["dotnet", "run", "--project", "src/VvvvMcp", "--no-build"]
     }
   }
 }
