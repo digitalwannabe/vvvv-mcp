@@ -661,7 +661,7 @@ graphify to understand patches faster?
 would it help to also ship a skill which tells the mcp how to use its tools? over-engineered?
 
 
-
+owui aiodns vpn issue needs a solution; should probably deactivate aiodns while/after installing owui
 
 
 
@@ -896,50 +896,86 @@ the pre-IDisposable port-hostage bug.
 
 ---
 
-# 2026-08-05 (3) — editor-API live patching (reviewed prt-prt/VL.Agent)
 
-Reviewed https://github.com/prt-prt/VL.Agent after his forum message. His claim is TRUE:
-there IS a public editor API (earlier "XML is the only way" was wrong):
-
-- **`VL.Lang.PublicAPI.SessionNodes`** (public static, **in VL.Core.dll** which we reference!):
-  `.CurrentSolution : ISolution` — the editor's recorder-backed live solution.
-- **`VL.Lang.PublicAPI.ISolution.SetPinValue(UniqueId node, string pin, object value)`** +
-  **`Confirm(SolutionUpdateKind)`** — set a pin default live, committed as an undoable step.
-- **`VL.Model.ModelExtensions`** (huge public static in VL.Lang.dll): AddNode, AddChild,
-  ReplaceDescendent, MakeCurrent (undo-integrated commits), BatchUpdate…
-- **`VL.HDE.API`** (static): LoadedDocuments, CurrentSelection, ActiveLiveCanvasStream.
-
-Mechanism: the Solution is IMMUTABLE; edits chain into a new solution, MakeCurrent/Confirm
-commits it = one undo step. His inbox = a file mailbox + ProcessNode thread (≈ our bridge's
-SynchronizationContext.Post, so we don't need it). His admitted limits: "very slow",
-needs the doc open AND FOCUSED, non-atomic, paste racy.
-
-**Decision (hybrid):** keep XML+reload as the PRIMARY write path (build_patch: atomic, fast,
-focus-independent, proven). Borrow the ONE clear editor-API win:
-
-- ✅ DONE: **`set_value_live`** — POST /api/pin/set (LivePinWriter.cs) + MCP tool. Sets a pin
-  default on the LIVE patch, undo-integrated (Ctrl+Z works — verified), no reload flash.
-  Verified live: LFO Period set to 10, document went isChanged:true, undo reverted it.
-
-**The working recipe (hard-won — 3 bugs + 1 wrong API before it landed):**
-1. Target the **NODE's elementId**, address the pin **by name** — `SetPinValue(nodeId, "Period", v)`.
-   (I initially passed the pin's elementId as the node id — no-op.)
-2. Use **`DevEnvHost.CurrentSolution`** (the MODEL solution, contains ALL open documents) —
-   NOT `SessionNodes.CurrentSolution` (a recorder scoped to the ACTIVE canvas only; its
-   GetDescendent can't find other documents' elements → silent no-op).
-3. The edit: `element = solution.GetDescendent(uid)` → find pin by name →
-   `ctv = CompileTimeValue.From(value, wrapNull:true, uid, clrType)` → `pin.WithValue(ctv)` →
-   `ModelExtensions.ReplaceDescendent(solution, newPin)` (GENERIC — close with solution's type) →
-   `ModelExtensions.MakeCurrent(next, kind, canvas)` on the UI thread.
-4. Update kind = **`CommitToValue | UpdateUIAndRuntime`** — NOT AffectCompilation (that does
-   NOT commit pin values). This was the bug that made everything "succeed" but change nothing.
-
-**More to explore here (not done yet):**
+**More to explore (not done yet):**
 - `ModelExtensions.AddNode` + `MakeCurrent` for UNDO-INTEGRATED node insertion on open docs
   (opt-in mode of build_patch; his per-element commits are slower + non-atomic vs our one XML write).
 - Reading live pin values back properly (CompileTimeValue unwrap for before/after display).
 - `pad.WithValue` vs node-input-pin default — pads have a separate path (associated property /
   data channel) for IOBox values.
-- His graph-transaction schema vs our build_patch spec — nearly identical shape; we're
-  converging. Consolidation with prt-prt + kopffarben's MCP was floated on the forum.
 - AddNode symbol resolution via `resolver.GetCandidates` (editor-grade) vs our live registry.
+
+
+
+
+
+this repo holds the source for a vvvv mcp, as well as a vvvv hde extension which serves as a abridge and optionally provides a openwebui chat in-app in vvvv as a window. we have already made our mcp a lot smarter, see our knowledge docs and mcp tooling and respective notes here:
+here are some of the things i noticed when using this improved version, which we need to address:
+
+- its using a node which doesnt exist: rotationx
+- it inserts a * node with factor 1
+- node arrangements: it arranges nodes horizontally. vvvv is top-down, left to right, pins are on top/bottom of nodes. also it seems to make big gaps between nodes, but thats probably also due to incorrect node sizing
+- node sizing: all nodes are extended, meaning they are too long. height is ok, but i think thats hardcoded in the ui anyway, so we might also have that wrong and it just shows ok....node length is variable in vvvv, can be dragged to resize, but when dropping nodes their length should be minimal, which exception of grouping nodes like cons, group, rootscene, join, etc - these can be extended to make more room for the subgraphs going into them.....the minimal node size is depending on number of visible pins (each node has visible and hidden pins defaults), or node name length, whichever is longer. we need to extract the correct length calculation from the corrected patches; you can see that by inspecting the + and the cons node here. question also is if we should calculate this on the fly, or save with our node database. however we're using a mixed source, our local node database and the live available nodes in vvvv, for which these info most likely doesnt exist.....so lets stick to computing length probably.
+- node positioning: atm, when i create a few single nodes, they are all placed in the same spot, overlapping. I assume the same is true for build_patch generated subgraphs; most likely they will just be placed over other nodes; so we need to figure out the closest free space to the pins we want to connect the node/subgraph to.
+- the mcp is not validating the patch before saying its finished, eg reading logs after dropping or validating before dropping
+- patches have some unnecessary nodes, eg, multiply by 1, or a pbr material with a rgba connected to a box: both the pbr is the default material and r=g=b=a=1.0 is the default color on a pbr material. So these nodes are not wrong, just not necessary. Its good the mcp knows how to connect them though, so i am not saying we should stop that behaviour. Multipy by 1 between lfo and x rotation indeed doesnt make any sense, if a user wants to make it faster he/she can tweak the lfo. having the pbr with rgab to quickly be able to set a color is not the worst thing. So, its good and bad, not sure what to do......
+
+im also giving you the chat for the mcp version of the patch, as well as another similar conversation. Use them to see if there are other improvements we can make to how our mcp operates.
+
+
+---
+
+# 2026-08-08 — layout, sizing, node guidance fixes (DONE)
+
+Issues from real usage (RotatingBox test patch via Open WebUI chat):
+
+1. **Layout direction WRONG** — was LEFT-TO-RIGHT (horizontal columns); vvvv is TOP-TO-BOTTOM.
+2. **Node widths massively overestimated** — LFO got 207px (actual: 45), SceneWindow got 508px.
+3. **Wrong rotation node** — model picked RotationX (radians, non-idiomatic) instead of
+   Rotation (Pitch/Yaw/Roll, cycles) or Rotation (Successive) (continuous animation).
+4. **Unnecessary nodes** — * by 1, PBRMaterial + RGBA just to set white (the default).
+5. **add_node stacking** — all nodes placed at same (400, _nextY) position, overlapping.
+
+## Fixes applied
+
+### PatchBuilderService.cs — ComputeLayout rewrite
+- **Direction**: rows by depth (Y increases), siblings stack horizontally (X) — matches
+  real vvvv patches (sources at top, sinks at bottom).
+- **Width formula** (calibrated against real patches):
+  - Operators ≤2 chars: fixed 25px
+  - Standard nodes: `name.Length * 6 + padding` (process=27, operation=15)
+  - Complex nodes (>8 visible pins): `longestInputPin * 4 + 101`
+  - Reference: +→25, Cons→39, LFO→45, Box→165, DirectionalLight→185, SceneWindow→205
+- **Starting position**: X=43, Y=40 (left-aligned, top of canvas).
+- **Gaps**: 30px vertical between depth levels, 30px horizontal between siblings.
+
+### PatchWriterService.cs — add_node positioning
+- Now scans existing nodes on the canvas and places new nodes BELOW the lowest existing
+  node (30px gap). No more overlapping at fixed (400, 200).
+- Default X changed from 400 → 43 (consistent with build_patch layout).
+
+### ServerInstructions.cs — new MINIMALISM + ROTATION rules
+- MINIMALISM: "do NOT add nodes that just set defaults. Unconnected pins keep their
+  default. Never insert * by 1. Prefer fewest nodes that achieve the goal."
+- ROTATION: explicit guidance on Rotation (Successive) vs Rotation vs RotationX/Y/Z,
+  with the instruction to NOT use RotationX/Y/Z.
+
+### Knowledge docs
+- **vl-quickref.md**: expanded Stride scene section with ranked rotation patterns,
+  minimalism rules, removed PBRMaterial from the default scene diagram.
+- **vl-common-graphs.md**: added "Minimal rotating box (5 nodes, 5 links)" template
+  using Rotation (Successive) — no LFO, no multiply, no material node.
+- **vl-file-format.md**: replaced node size table with calibrated reference widths and
+  correct formula. Layout dimensions now state "Top-to-bottom" as the dataflow direction.
+- **vl-patterns.md**: updated layout convention note (top-to-bottom, height always 19).
+
+## Still open
+- Node width calculation is approximate (±5-10px for most nodes, up to ±20px for some
+  operations like "Rotation" at 63 vs actual 54). Perfect accuracy would require knowing
+  vvvv's internal font metrics. Current accuracy is acceptable (correct order of magnitude,
+  no more 5x overestimates).
+- RotationX actually EXISTS in the live registry but is non-idiomatic. The ServerInstructions
+  now explicitly ban it. If the model still picks it, we could add a deny-list in the
+  NodeResolutionService that redirects RotationX → Rotation with a warning.
+- "Grouping nodes" (RootScene, Cons) are sometimes manually widened in practice — the auto-
+  layout doesn't attempt this (would need to know which nodes receive many children).

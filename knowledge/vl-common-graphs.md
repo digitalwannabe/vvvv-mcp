@@ -23,6 +23,17 @@ LFO [Animation].Phase → OrbitCamera.Initial Yaw          (optional animation)
 ```
 Minimal example: VL.Addons.Stride help "Reference WireBox.vl".
 
+Minimal rotating box (5 nodes, 5 links):
+```
+Rotation (Successive) [3D.Transform]  .Result → Box [Stride.Models].Transformation
+  values: {"Angular Delta":"0.01, 0, 0"}     ← X-axis rotation, ~0.6 rpm
+Box.Entity → RootScene [Stride].Child
+DirectionalLight [Stride.Lights].Entity → RootScene.Child
+RootScene.Output → SceneWindow [Stride].Input
+```
+No LFO, no multiply, no material node needed — Rotation (Successive) accumulates
+internally, Box has a default PBR material, SceneWindow has Enable Default Camera.
+
 ### P2. PBR material with texture maps
 ```
 ValueMap [Stride.Materials.Inputs].Output → PBRMaterial (Metallic).Metalness / .Roughness

@@ -128,14 +128,33 @@ Common `TypeFlag` names: `Boolean`, `Int32`, `Float32`, `Float64`, `String`, `Ve
 SceneWindow [Stride]            ← entry point for 3D rendering
   └── RootScene [Stride]        ← .Output → SceneWindow.Input
         ├── Box/Sphere/Plane [Stride.Models]   ← .Entity → RootScene.Child (pin group!)
-        │     └── PBRMaterial (Metallic) [Stride.Materials] → .Material
+        │     └── (Material pin: leave unconnected for default PBR white)
         ├── DirectionalLight / SkyboxLight [Stride.Lights]  ← .Entity → RootScene.Child
         └── OrbitCamera [Stride.Cameras] → SceneWindow.Camera
 ```
 
-Rotation over time: `Rotation (Successive) [3D.Transform]` — feed `Angular Delta`
-(Vector3, cycles per FRAME, e.g. `-0.02, 0, 0`), output `Result` is a Matrix →
-connect directly to a model's `Transformation` pin (no TransformSRT needed).
+### Rotation patterns (in order of preference)
+
+1. **Continuous rotation over time** → `Rotation (Successive) [3D.Transform]`
+   - Process node, feed `Angular Delta` (Vector3, cycles per FRAME, e.g. `0.01, 0, 0`)
+   - Output `Result` is a Matrix → connect to model's `Transformation` pin
+   - No multiply, no LFO needed — it accumulates internally
+
+2. **LFO-driven rotation** → `LFO [Animation]` + `Rotation [3D.Matrix]`
+   - LFO.Phase (0–1) → Rotation.Pitch (or Yaw/Roll)
+   - Rotation.Result → model.Transformation
+   - NO multiply-by-1 between LFO and Rotation — LFO.Period IS the speed
+
+3. **One-shot rotation matrix** → `Rotation [3D.Matrix]` (member op on Matrix type)
+   - Pins: Pitch, Yaw, Roll (all in cycles, 0–1 = full turn)
+   - Needs CategoryReference: `<CategoryReference Kind="RecordType" Name="Matrix" NeedsToBeDirectParent="true" />`
+
+### Minimalism rules
+
+- Unconnected pins use sensible defaults (Material=default PBR, Color=white, Size=1,1,1)
+- Do NOT insert `*` by 1 or `+` by 0 — these are no-ops
+- Do NOT add PBRMaterial + RGBA just to set the default color — it's already white
+- If the user wants color control, they will ask for it
 
 Key package: `VL.Stride` → NugetDependency `Location="VL.Stride"` (resolves to VL.Stride.Runtime)
 Key categories: `Stride` (SceneWindow, RootScene), `Stride.Models`, `Stride.Materials`, `Stride.Cameras`, `Stride.Lights`

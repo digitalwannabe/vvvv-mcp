@@ -390,15 +390,23 @@ Typical X-gap between side-by-side output pads: 80-120 px.
 
 ### Node Sizes (Width x Height)
 
-| Node Type | Width | Height | Example |
-|-----------|-------|--------|---------|
-| Simple operation (+, -, *) | 22-25 | 19 | `"200,300,25,19"` |
-| Standard CoreLib node | 45-85 | 19 | `"200,300,65,19"` |
-| Long-named node | 85-165 | 19 | `"200,300,145,19"` |
-| Join/Split/stateful ops | 41-73 | 26 | `"200,300,52,26"` |
-| Skia primitive | 105-145 | 13 | `"200,300,105,13"` |
+| Node Type | Width | Height | Formula/Example |
+|-----------|-------|--------|-----------------|
+| Short math operators (+, -, *, /) | 25 | 19 | Fixed: `"200,300,25,19"` |
+| Standard operation (3-8 char name) | 35-63 | 19 | `name.Length * 6 + 15` |
+| Standard process (3-8 char name) | 45-75 | 19 | `name.Length * 6 + 27` |
+| Complex node (>8 visible pins) | 140-210 | 19 | `longestInputPin * 4 + 101` |
 
 Standard node height is **19 px** (~80% of all nodes).
+
+Reference widths from real patches:
+- `+` → 25, `Cons` → 39, `LFO` → 45, `Rotation` → 54
+- `Box` (Stride) → 165, `DirectionalLight` → 185, `SceneWindow` → 205
+
+Width rules:
+1. Name ≤ 2 chars (operators): always 25
+2. Few visible pins (≤ 8 total): width from name length + padding
+3. Many visible pins (> 8): longest INPUT pin name drives width
 
 ### Pad Sizes (Width x Height)
 
@@ -624,21 +632,19 @@ y = 800    [Renderer Node]         (if visual, e.g. Skia)
 | Metric | Value |
 |--------|-------|
 | Application node position | `Bounds="100,100"` |
-| Title comment Y | ~100-120 |
-| Description comment Y | ~140-190 |
-| First input pad Y | ~200-250 |
-| Main processing area Y | ~280-400 |
-| Output display area Y | ~370-500 |
-| Renderer Y | ~800-900 |
-| Vertical pad-to-node gap | 50-80 px |
-| Vertical node-to-node gap | 40-50 px |
-| Vertical node-to-output gap | 60-70 px |
-| Horizontal section gap | 350-400 px |
+| **Dataflow direction** | **Top-to-bottom** (Y increases with depth) |
+| First node Y | ~40-60 |
+| Vertical node-to-node gap | 30-50 px (between depth levels) |
+| Horizontal sibling gap | 30-40 px (parallel branches) |
+| Starting X | ~43 (left-aligned) |
 | Standard node height | 19 px |
 | Boolean pad size | 35x35 px |
 | X-alignment precision | 1-4 px |
-| Output pad X-offset | +2 px |
-| Fan-out spacing | 100-165 px |
+
+**Layout convention:** data flows top→bottom. Sources (LFO, pads) at the top,
+sinks (SceneWindow, Renderer) at the bottom. Parallel branches lay side-by-side
+at the same Y level. Links run vertically between output pins (bottom of source)
+and input pins (top of target).
 
 ---
 <!-- supplementary: format-reference.md -->

@@ -351,6 +351,33 @@ internal class LiveNodeCatalog
         var isUnused = accessors.Prop(st, "IsUnused")?.GetValue(sym) as bool? ?? false;
         if (isUnused) return null;
 
+        // ── Smell / visibility ────────────────────────────────────────────────
+        // ParentCategory is a CategoryAndSmell: .Category + .Smell
+        // Smell values: "" (visible), "Internal" (hidden), "Advanced" (hidden by default),
+        // "Obsolete", "Experimental", "Hidden", etc.
+        // The node browser hides anything with a non-empty/non-default Smell.
+        // We read Smell from BOTH the symbol itself AND its ParentCategory.
+        var smell = "";
+        var directSmell = accessors.Prop(st, "Smell")?.GetValue(sym)?.ToString() ?? "";
+        if (!string.IsNullOrEmpty(directSmell)) smell = directSmell;
+
+        var parentCat = accessors.Prop(st, "ParentCategory")?.GetValue(sym);
+        var catSmell = "";
+        if (parentCat is not null)
+        {
+            catSmell = accessors.Prop(parentCat.GetType(), "Smell")?.GetValue(parentCat)?.ToString() ?? "";
+            if (string.IsNullOrEmpty(smell) && !string.IsNullOrEmpty(catSmell))
+                smell = catSmell;
+        }
+
+        // Classify into vvvv's 4-level visibility system:
+        //   default → hi-level (shown in default node browser)
+        //   advanced → low-level (shown with "show advanced")
+        //   experimental → future/unstable
+        //   obsolete → deprecated
+        //   internal → completely hidden (never placeable)
+        var visibility = ClassifyVisibility(smell);
+
         // Name: try Name (NameAndVersion → FullName keeps "(Variant)"), else Element.Name
         string? name = null;
         var nameObj = accessors.Prop(st, "Name")?.GetValue(sym);
@@ -367,10 +394,9 @@ internal class LiveNodeCatalog
         }
         if (string.IsNullOrEmpty(name)) return null;
 
-        // Category: ICategorizableSymbol.ParentCategory (CategoryAndSmell → Category → FullName),
+        // Category: CategoryAndSmell → Category → FullName,
         // then Category.FullName, then ContainingType fallbacks
         var category = "";
-        var parentCat = accessors.Prop(st, "ParentCategory")?.GetValue(sym);
         if (parentCat is not null)
         {
             var catObj = accessors.Prop(parentCat.GetType(), "Category")?.GetValue(parentCat) ?? parentCat;
@@ -398,6 +424,10 @@ internal class LiveNodeCatalog
             }
         }
 
+        // Categories with " - Hidden" suffix are internal lifecycle operations
+        if (category.Contains(" - Hidden", StringComparison.OrdinalIgnoreCase))
+            visibility = "internal";
+
         // Pins
         var inputs = ExtractSymbolPins(accessors.Prop(st, "Inputs")?.GetValue(sym) as IEnumerable, accessors, isInput: true);
         var outputs = ExtractSymbolPins(accessors.Prop(st, "Outputs")?.GetValue(sym) as IEnumerable, accessors, isInput: false);
@@ -421,8 +451,32 @@ internal class LiveNodeCatalog
             Inputs = inputs.Where(p => p.Name != "Node Context").ToList(),
             Outputs = outputs,
             IsGeneric = isGeneric,
-            IsAccessor = isAccessor
+            IsAccessor = isAccessor,
+            Visibility = visibility,
+            Smell = smell
         };
+    }
+
+    /// <summary>
+    /// Maps a raw VL Smell string to one of the 4 node browser visibility levels.
+    /// </summary>
+    private static string ClassifyVisibility(string smell)
+    {
+        if (string.IsNullOrEmpty(smell) || smell == "Default" || smell == "None" || smell == "0")
+            return "default";
+        if (smell.Contains("Internal", StringComparison.OrdinalIgnoreCase)
+            || smell.Contains("Hidden", StringComparison.OrdinalIgnoreCase))
+            return "internal";
+        if (smell.Contains("Advanced", StringComparison.OrdinalIgnoreCase))
+            return "advanced";
+        if (smell.Contains("Experimental", StringComparison.OrdinalIgnoreCase)
+            || smell.Contains("Future", StringComparison.OrdinalIgnoreCase))
+            return "experimental";
+        if (smell.Contains("Obsolete", StringComparison.OrdinalIgnoreCase)
+            || smell.Contains("Deprecated", StringComparison.OrdinalIgnoreCase))
+            return "obsolete";
+        // Unknown non-empty smell → treat as advanced (visible but not default)
+        return "advanced";
     }
 
     private static List<LivePin> ExtractSymbolPins(IEnumerable? pins, AccessorCache accessors, bool isInput)
@@ -578,6 +632,25 @@ internal class LiveNodeCatalog
         var filePath = t.GetProperty("FilePath")?.GetValue(desc)?.ToString() ?? "";
         var fragmented = t.GetProperty("Fragmented")?.GetValue(desc) as bool? ?? false;
 
+        // Check visibility/hidden flags — the node browser hides nodes that have
+        // VL-idiomatic replacements (e.g. RotationX from .NET Matrix is hidden because
+        // VL provides Rotation with Pitch/Yaw/Roll). Try multiple possible property names.
+        var isHidden = t.GetProperty("IsHidden")?.GetValue(desc) as bool? ?? false;
+        if (!isHidden)
+        {
+            var visibility = t.GetProperty("Visibility")?.GetValue(desc)?.ToString() ?? "";
+            isHidden = visibility.Contains("Hidden", StringComparison.OrdinalIgnoreCase)
+                    || visibility.Contains("Optional", StringComparison.OrdinalIgnoreCase);
+        }
+        if (!isHidden)
+        {
+            var flags = t.GetProperty("Flags")?.GetValue(desc)?.ToString() ?? "";
+            isHidden = flags.Contains("Hidden", StringComparison.OrdinalIgnoreCase)
+                    || flags.Contains("Internal", StringComparison.OrdinalIgnoreCase);
+        }
+        // Skip fully hidden nodes (not in the node browser at all)
+        if (isHidden) return null;
+
         var inputs = ExtractPins(t.GetProperty("Inputs")?.GetValue(desc) as IEnumerable);
         var outputs = ExtractPins(t.GetProperty("Outputs")?.GetValue(desc) as IEnumerable);
 
@@ -701,12 +774,20 @@ internal class LiveNodeCatalog
 
     // ── Query API (called from HTTP handler threads) ──────────────────────────
 
-    public object Search(string? query, string? category, int limit, bool includePins)
+    public object Search(string? query, string? category, int limit, bool includePins, bool includeHidden = false)
     {
         List<LiveNode> snapshot;
         lock (_gate) snapshot = _nodes;
 
         IEnumerable<LiveNode> q = snapshot;
+
+        // Visibility filtering based on vvvv's 4-level node browser:
+        //   default mode: only "default" visibility nodes (hi-level, what most users need)
+        //   includeHidden: also includes "advanced", "experimental", "obsolete"
+        //   "internal" nodes are NEVER returned (not placeable)
+        q = q.Where(n => n.Visibility != "internal");
+        if (!includeHidden)
+            q = q.Where(n => n.Visibility == "default");
 
         if (!string.IsNullOrWhiteSpace(category))
             q = q.Where(n => n.Category.StartsWith(category, StringComparison.OrdinalIgnoreCase));
@@ -752,18 +833,23 @@ internal class LiveNodeCatalog
         };
     }
 
-    public object Lookup(string name, string? category)
+    public object Lookup(string name, string? category, bool includeHidden = false)
     {
         List<LiveNode> snapshot;
         lock (_gate) snapshot = _nodes;
 
-        var matches = snapshot
+        // Filter by visibility: exclude internal always, exclude non-default unless requested
+        var pool = snapshot.Where(n => n.Visibility != "internal").ToList();
+        if (!includeHidden)
+            pool = pool.Where(n => n.Visibility == "default").ToList();
+
+        var matches = pool
             .Where(n => n.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
             .ToList();
         if (matches.Count == 0)
         {
             // Try full name ("Stride.Models.Box") and suffix match
-            matches = snapshot
+            matches = pool
                 .Where(n => n.FullName.Equals(name, StringComparison.OrdinalIgnoreCase)
                          || n.FullName.EndsWith("." + name, StringComparison.OrdinalIgnoreCase))
                 .ToList();
@@ -820,6 +906,7 @@ internal class LiveNodeCatalog
                 n.Kind,
                 n.Package,
                 accessor = n.IsAccessor ? true : (bool?)null,
+                visibility = n.Visibility != "default" ? n.Visibility : null,
                 inputCount = n.Inputs.Count,
                 outputCount = n.Outputs.Count
             };
@@ -834,6 +921,7 @@ internal class LiveNodeCatalog
             n.SourceFile,
             n.IsGeneric,
             accessor = n.IsAccessor ? true : (bool?)null,
+            visibility = n.Visibility != "default" ? n.Visibility : null,
             inputs = n.Inputs.Select(p => new { p.Name, p.Type, p.DefaultValue, p.IsPinGroup, hidden = p.IsHidden ? true : (bool?)null, optional = p.IsOptional ? true : (bool?)null, state = p.IsState ? true : (bool?)null }),
             outputs = n.Outputs.Select(p => new { p.Name, p.Type, p.IsPinGroup, hidden = p.IsHidden ? true : (bool?)null, optional = p.IsOptional ? true : (bool?)null, state = p.IsState ? true : (bool?)null })
         };
@@ -860,6 +948,17 @@ internal class LiveNodeCatalog
         public bool IsGeneric { get; set; }
         /// <summary>True for synthesized property/field accessor nodes (demoted in search).</summary>
         public bool IsAccessor { get; set; }
+        /// <summary>
+        /// Node browser visibility level matching vvvv's 4-level system:
+        ///   "default"      — hi-level nodes (shown in default node browser)
+        ///   "advanced"     — low-level/advanced (hidden by default, shown with "show advanced")
+        ///   "experimental" — future/unstable (shown with experimental badge)
+        ///   "obsolete"     — deprecated (shown with strikethrough)
+        ///   "internal"     — completely hidden (never shown, not placeable)
+        /// </summary>
+        public string Visibility { get; set; } = "default";
+        /// <summary>Raw smell string from the VL symbol (for diagnostics).</summary>
+        public string Smell { get; set; } = "";
         public List<LivePin> Inputs { get; set; } = new();
         public List<LivePin> Outputs { get; set; } = new();
     }

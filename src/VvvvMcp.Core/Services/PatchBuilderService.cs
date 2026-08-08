@@ -681,8 +681,8 @@ public class PatchBuilderService
         }
 
         // vvvv node Bounds: height is ALWAYS 19 (header only — vvvv renders pin rows
-        // below it automatically). Width is derived from the node name and the
-        // visible pin rows (input name left + output name right share a row).
+        // below it automatically). Width is computed from node name length and, for
+        // complex nodes with many visible pins, from the longest visible pin name.
         // For layout spacing we still need the VISUAL height (header + pin rows)
         // so stacked nodes don't overlap.
         int VisualHeightOf(string key)
@@ -692,40 +692,68 @@ public class PatchBuilderService
             var visibleOutputs = r.Outputs.Count(p => !p.IsHidden);
             return 19 + Math.Max(1, Math.Max(visibleInputs, visibleOutputs)) * 15;
         }
+
+        // Node width calibrated against real vvvv patches:
+        //   + → 25,  Cons → 39,  LFO → 45,  Rotation → 54,
+        //   Box (Stride) → 165,  DirectionalLight → 185,  SceneWindow → 205
+        // Rules:
+        //   1. Short operators (1-2 chars): fixed 25px
+        //   2. Nodes with many visible pins (>8 total): longest input pin name drives width
+        //      (pin labels are shown on the node body): longestInputPin * 4 + 101
+        //   3. Standard nodes: name * 6 + padding (process=27, operation=15)
         int WidthOf(string key)
         {
-            if (!resolved.TryGetValue(key, out var r)) return 90; // pads
-            var longestIn = r.Inputs.Where(p => !p.IsHidden).Select(p => p.Name.Length).DefaultIfEmpty(0).Max();
-            var longestOut = r.Outputs.Where(p => !p.IsHidden).Select(p => p.Name.Length).DefaultIfEmpty(0).Max();
-            var pinRowWidth = (longestIn + longestOut) * 7 + (longestOut > 0 ? 60 : 30);
-            var nameWidth = r.Name.Length * 8 + 40;
-            return Math.Max(90, Math.Max(nameWidth, pinRowWidth));
+            if (!resolved.TryGetValue(key, out var r)) return 35; // pads
+
+            // Short operators: fixed minimal width
+            if (r.Name.Length <= 2) return 25;
+
+            var visIn = r.Inputs.Count(p => !p.IsHidden);
+            var visOut = r.Outputs.Count(p => !p.IsHidden);
+            var totalVisible = visIn + visOut;
+
+            // Complex nodes with many visible pins: pin-name-driven width
+            if (totalVisible > 8)
+            {
+                var longestIn = r.Inputs.Where(p => !p.IsHidden)
+                    .Select(p => p.Name.Length).DefaultIfEmpty(0).Max();
+                return Math.Max(r.Name.Length * 6 + 30, longestIn * 4 + 101);
+            }
+
+            // Standard nodes: name length + padding
+            bool isProcess = string.Equals(r.Kind, "Process", StringComparison.OrdinalIgnoreCase);
+            int padding = isProcess ? 27 : 15;
+            return Math.Max(35, r.Name.Length * 6 + padding);
         }
 
-        // Column x positions from cumulative column widths
+        // vvvv dataflow is TOP-TO-BOTTOM (inputs on top, outputs on bottom).
+        // Layout: rows by depth (Y increases), nodes at same depth stack horizontally (X).
         var maxDepth = keys.Count > 0 ? keys.Max(k => depth[k]) : 0;
-        var columnX = new int[maxDepth + 1];
-        var x = 250;
+
+        // Row Y positions from cumulative visual heights per depth level
+        var rowY = new int[maxDepth + 1];
+        var y = 40; // starting Y (top of canvas, below any title comments)
         for (var d = 0; d <= maxDepth; d++)
         {
-            columnX[d] = x;
-            var colWidth = keys.Where(k => depth[k] == d).Select(WidthOf).DefaultIfEmpty(160).Max();
-            x += colWidth + 90; // gutter for links
+            rowY[d] = y;
+            var rowHeight = keys.Where(k => depth[k] == d && !explicitBounds.Contains(k))
+                .Select(VisualHeightOf).DefaultIfEmpty(34).Max();
+            y += rowHeight + 30; // 30px vertical gap between depth rows
         }
 
-        // Stack nodes per column with cumulative VISUAL heights (pin rows included),
-        // but write Bounds with the vvvv-correct constant height of 19.
-        var columnY = new Dictionary<int, int>();
+        // Place nodes per row: stack horizontally within each depth level.
+        // Primary X = 43 (left-aligned like real patches); parallel branches offset right.
+        var rowX = new Dictionary<int, int>();
         foreach (var k in keys.OrderBy(k => depth[k]).ThenBy(k => k, StringComparer.Ordinal))
         {
             if (explicitBounds.Contains(k)) continue;
             var d = depth[k];
-            var y = columnY.TryGetValue(d, out var cy) ? cy : 120;
+            var xPos = rowX.TryGetValue(d, out var cx) ? cx : 43;
             var isNode = resolved.ContainsKey(k);
             result[k] = isNode
-                ? $"{columnX[d]},{y},{WidthOf(k)},19"
-                : $"{columnX[d]},{y}";
-            columnY[d] = y + VisualHeightOf(k) + 45;
+                ? $"{xPos},{rowY[d]},{WidthOf(k)},19"
+                : $"{xPos},{rowY[d]}";
+            rowX[d] = xPos + WidthOf(k) + 30; // 30px horizontal gap between siblings
         }
 
         return result;

@@ -26,6 +26,13 @@ internal static class ServerInstructions
         "NODES: search_nodes_live/get_node_details_live when the bridge is up (exact pins+real types); " +
         "search_nodes/get_node_details offline otherwise (types may be 'Object' — trust names). " +
         "Add a category hint when a name is ambiguous ('Box' in 'Stride.Models').\n" +
+        "MINIMALISM: vvvv pins have sensible defaults — do NOT add nodes that just set defaults. " +
+        "Unconnected pins keep their default (e.g. Material=default PBR, Color=white). " +
+        "Never insert * by 1 or + 0 as 'speed control' — LFO.Period IS the speed control. " +
+        "Prefer the fewest nodes that achieve the goal; the user can add tweaking nodes later.\n" +
+        "ROTATION: for rotating objects over time use 'Rotation (Successive) [3D.Transform]' (process node, " +
+        "feed Angular Delta as Vector3, e.g. values {\"Angular Delta\":\"0.01, 0, 0\"} for X-axis spin). " +
+        "For one-shot rotation matrix use 'Rotation [3D.Matrix]' (has Pitch/Yaw/Roll in cycles, 0-1=full turn).\n" +
         "KNOWLEDGE (read once, only when the task needs it): vl-quickref=orientation; " +
         "vl-common-graphs=pin-level patterns (Stride scene, Skia, channels, TextureFX, Fuse); " +
         "vl-building-blocks=definitions/regions/pads/XML; vl-project-architecture=multi-doc projects; " +

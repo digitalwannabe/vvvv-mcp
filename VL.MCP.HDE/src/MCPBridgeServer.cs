@@ -919,8 +919,12 @@ internal static class BridgeVersion
         var limit = int.TryParse(limitStr, out var l) ? l : 30;
         var pins = request.QueryString["pins"];
         var includePins = pins == "1" || pins == "true";
+        // visibility: "default" (only hi-level nodes), "all" (include advanced/experimental/obsolete)
+        // "internal" nodes are never returned regardless of this flag
+        var vis = request.QueryString["visibility"];
+        var includeHidden = vis == "all" || vis == "advanced";
 
-        return _nodeCatalog.Search(query, category, limit, includePins);
+        return _nodeCatalog.Search(query, category, limit, includePins, includeHidden);
     }
 
     private object HandleNodeLookup(HttpListenerRequest request)

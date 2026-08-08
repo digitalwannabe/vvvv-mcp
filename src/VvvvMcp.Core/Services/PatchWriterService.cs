@@ -19,9 +19,9 @@ public class PatchWriterService
     private static readonly XNamespace PropNs = "property";
     
     // Track position for auto-layout
-    private int _nextY = 200;
-    private const int NodeSpacingY = 60;
-    private const int DefaultX = 400;
+    private int _nextY = 40;
+    private const int NodeSpacingY = 50;
+    private const int DefaultX = 43;
 
     // Default version read from the empty_new_patch.vl template when available.
     // Hardcoded fallback matches what the template currently contains.
@@ -174,9 +174,34 @@ public class PatchWriterService
         // Auto-detect node kind if not specified
         nodeKind ??= "OperationCallFlag";
         
-        // Auto-layout if no bounds specified  
-        bounds ??= $"{DefaultX},{_nextY},100,19";
-        _nextY += NodeSpacingY;
+        // Auto-layout: find the lowest Y position of existing nodes to avoid overlap
+        if (bounds is null)
+        {
+            var maxY = 0;
+            foreach (var existing in canvas.Elements("Node"))
+            {
+                var b = existing.Attribute("Bounds")?.Value;
+                if (b is not null)
+                {
+                    var parts = b.Split(',');
+                    if (parts.Length >= 2 && int.TryParse(parts[1].Trim(), out var ey))
+                    {
+                        // Account for visual height: header 19 + approx pin rows
+                        var visualH = 19 + existing.Elements("Pin")
+                            .Count(p => p.Attribute("IsHidden")?.Value != "true"
+                                && p.Attribute("Kind")?.Value == "InputPin") * 15;
+                        maxY = Math.Max(maxY, ey + visualH);
+                    }
+                }
+            }
+            var startY = Math.Max(_nextY, maxY + 30);
+            bounds = $"{DefaultX},{startY},65,19";
+            _nextY = startY + NodeSpacingY;
+        }
+        else
+        {
+            _nextY += NodeSpacingY;
+        }
 
         // Build the node reference
         var nodeRef = new XElement(PropNs + "NodeReference",

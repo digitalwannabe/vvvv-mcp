@@ -402,5 +402,6 @@ See `vl-file-format.md` for the full tebjan reference table (based on 769+ produ
 | String comment | `300,25` (title) or `300,40` (description) |
 
 **Multi-input staircase**: when N pads feed one node, offset each pad (+27x, +29y) so links don't cross.
-**Bounds format**: definition/container nodes (Application, Process, Region) use `"X,Y,W,H"` (4-value);
-operation node call width auto-calculated from name length; use `65,19` as a safe default.
+**Bounds format**: definition/container nodes (Application, Process, Region) use `"X,Y"` (2-value);
+processing nodes use `"X,Y,W,19"` (4-value, height always 19). Width: operators=25, standard=name*6+15/27.
+**Layout direction**: top-to-bottom (Y increases with dataflow depth). Sources at top, sinks at bottom.
