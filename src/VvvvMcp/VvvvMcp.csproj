@@ -9,7 +9,7 @@
     <ToolCommandName>vvvv-mcp</ToolCommandName>
     <!-- NuGet package metadata -->
     <PackageId>vvvv-mcp</PackageId>
-    <Version>1.2.2</Version>
+    <Version>1.2.3</Version>
     <Title>vvvv-mcp</Title>
     <Description>MCP server for vvvv gamma. Builds whole connected patch subgraphs in one call (build_patch) verified against the live instance; live node registry with exact pins + real types (19k nodes) via the VL.MCP.HDE editor extension; offline catalog fallback; Gray Book knowledge base; C# node + SDSL shader generation. Works without a vvvv installation for knowledge and patch tools.</Description>
     <Authors>digital.wannabe</Authors>
@@ -38,7 +38,7 @@
   <ItemGroup>
     <None Include="..\..\VVVVNodeAnalyzer\output\vvvv_nodes_mcp.json" CopyToOutputDirectory="PreserveNewest" Link="vvvv_nodes_mcp.json" />
     <None Include="..\..\knowledge\*.md" CopyToOutputDirectory="PreserveNewest" Link="knowledge\%(Filename)%(Extension)" />
-    <!-- Template files â€” copied recursively into knowledge/templates/ in the output -->
+    <!-- Template files Ã¢â‚¬â€ copied recursively into knowledge/templates/ in the output -->
     <None Include="..\..\knowledge\templates\**\*" CopyToOutputDirectory="PreserveNewest" Link="knowledge\templates\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
   <!-- README + LICENSE for NuGet package page -->

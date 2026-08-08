@@ -110,22 +110,20 @@ public class KnowledgeResources
 
     [McpServerResource(Name = "vvvv Patching Patterns (always-applicable)", UriTemplate = "vvvv://knowledge/patterns")]
     [Description("""
-        Ground-truth, immediately-applicable XML patterns for creating .vl patches. Contains:
-          - Complete document skeleton (correct Document/Patch/Canvas/Application/ProcessDefinition structure)
-          - All IOBox variants (Float32, Boolean bang/toggle, String comment, Vector3, RGBA, Spread<T>)
-          - If region XML with ControlPoint splicers
-          - ForEach region XML with ControlPoint splicers (Create/Update/Dispose)
-          - Switch, S+H, Changed, LFO nodes
-          - Channel / SetValue / Value / EnsureValue / Consume (Observable) patterns
-          - Collections: AddRange, InsertSlice, Map
-          - Full Stride 3D scene: SceneWindow, RootScene, Sphere, DirectionalLight, SkyboxLight, OrbitCamera
-          - Stride Group / Group(Spectral) / TransformSRT / SkiaRenderer
-          - Skia Renderer window node
-          - SDSL: FilterBase, MixerBase, TextureFX Source, ComputeFX, DrawFX
-          - Layout conventions from VL.StandardLibs analysis
+        Verified, immediately-usable XML patterns for .vl patches. Contains:
+          - All IOBox (Pad) variants: Float32, Integer32, Boolean bang/toggle,
+            String comment (font 9/14), Vector3, Color RGBA, Spread<T>
+          - If region XML: ControlPoints before wrapping Patch, Create+Then,
+            content nodes directly in wrapping Patch (no Canvas, no Fragment)
+          - ForEach region XML: ControlPoints before wrapping Patch, Create+Update+Dispose,
+            content directly in wrapping Patch (no Canvas, no Fragment)
+          - Common process nodes: LFO, S+H, Changed, Switch, OnOpen, Damper
+          - Layout conventions table (Y positions, spacing, node widths)
         
-        Read this BEFORE creating or editing any .vl patch — it eliminates the most common mistakes
-        and removes the need to look up basic structure every session.
+        For Stride/Skia/Fuse/channel/IO graphs use vl-common-graphs.
+        For definitions, reactive, channels, C# interop use vl-building-blocks.
+        Read this BEFORE creating or editing any .vl patch — eliminates the most
+        common region and IOBox serialization mistakes.
         """)]
     public string GetPatterns() => Get("vl-patterns");
 

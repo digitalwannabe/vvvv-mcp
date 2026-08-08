@@ -23,10 +23,13 @@ public class VvvvPrompts
 
     private const string PatternsInstruction =
         "**Step 0 — patterns reference (read once per session, skip if already in context):**\n" +
-        "Read the resource `vvvv://knowledge/patterns`. It contains working XML for every " +
-        "common pattern: document skeleton, If/ForEach regions with ControlPoint splicers, " +
-        "all IOBox types, Channel/SetValue/Consume, Stride scene, Skia Renderer, and SDSL " +
-        "shaders. If this resource is already visible earlier in the conversation, do not " +
+        "Read the resource `vvvv://knowledge/patterns`. It contains verified XML for: " +
+        "all IOBox types (Float32, Boolean bang/toggle, String comment, Vector3, RGBA, Spread<T>), " +
+        "If/ForEach region structure with ControlPoint splicers and wiring, and common process " +
+        "nodes (LFO, S+H, Changed, Switch, OnOpen, Damper). " +
+        "For Stride/Skia/Fuse/channel graphs read `vl-common-graphs`; " +
+        "for definitions/channels/reactive/C# interop read `vl-building-blocks`. " +
+        "If this resource is already visible earlier in the conversation, do not " +
         "read it again — use what is already in your context.";
 
     // ── Prompts ───────────────────────────────────────────────────────────────

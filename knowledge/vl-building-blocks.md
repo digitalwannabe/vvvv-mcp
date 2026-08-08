@@ -164,23 +164,42 @@ then a `CategoryReference`, then the region-kind Choice. Inner patches carry
 | This | — | `ProcessNode` (Builtin) | — | outputs enclosing process instance |
 | Reference | — | `ProcessAppFlag` | — | reference access to data |
 
-Region skeleton (If):
+Region skeleton (If) — verified against `knowledge/templates/vl/basic_vl_objects.vl` and production patches:
+
+`ControlPoint` splicers are **direct children of Node**, appearing **before** the wrapping Patch.
+Content nodes go **directly inside the wrapping `<Patch>`** — **no `<Canvas>`, no `<Fragment>`**.
+Named lifecycle patches (Create/Then or Create/Update/Dispose) precede content nodes.
 
 ```xml
-<Node Bounds="..." Id="...">
+<Node Bounds="180,330,200,200" Id="...">
   <p:NodeReference LastCategoryFullName="Primitive" LastDependency="Builtin">
     <Choice Kind="StatefulRegion" Name="Region (Stateful)" Fixed="true" />
     <CategoryReference Kind="Category" Name="Primitive" />
     <Choice Kind="ApplicationStatefulRegion" Name="If" />
   </p:NodeReference>
   <Pin Id="..." Name="Condition" Kind="InputPin" />
-  <Patch Id="cId" ManuallySortedPins="true" Name="Create" />
-  <Patch Id="tId" ManuallySortedPins="true" Name="Then" />
+  <!-- ControlPoints BEFORE the wrapping Patch (direct children of Node) -->
+  <ControlPoint Id="topSplicer"    Bounds="194,336" Alignment="Top" />
+  <ControlPoint Id="bottomSplicer" Bounds="194,490" Alignment="Bottom" />
+  <!-- Single wrapping Patch: lifecycle named patches + content directly inside -->
+  <Patch Id="innerPatchId" ManuallySortedPins="true">
+    <Patch Id="createId" Name="Create" ManuallySortedPins="true" />
+    <Patch Id="thenId"   Name="Then"   ManuallySortedPins="true" />
+    <!-- content nodes go here as direct children — NO Canvas, NO Fragment -->
+  </Patch>
 </Node>
 ```
 
-**Accumulators/splicers** serialize as `ControlPoint` elements (`Alignment="Top|Bottom"`,
-2-value Bounds) on the region node.
+**Lifecycle patch names per region type** (confirmed from template):
+
+| Region | Lifecycle patches |
+|---|---|
+| If | Create, Then |
+| Cache | Create, Then |
+| ForEach / ForEach (Max) / Repeat | Create, Update, Dispose |
+| Using | Create, Update |
+| ManageProcess / Comment / Try / Do | Create, Update, Dispose |
+| Delegate | (single unnamed patch) |
 
 **Frame/Overlay** (visual only): `<Overlay Id="..." Name="title" Bounds="x,y,w,h"><p:ColorIndex p:Type="Int32">7</p:ColorIndex></Overlay>` — sibling of nodes inside the canvas.
 

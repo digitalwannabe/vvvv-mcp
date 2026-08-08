@@ -14,9 +14,11 @@ public class PatchTools
     // reminder whether it arrived here via a prompt or a direct "edit this patch" request.
     private const string EditContextHint =
         "If you are about to edit this patch: read resource vvvv://knowledge/patterns " +
-        "(skip if already in context this session). It has correct XML for all common " +
-        "patterns — document skeleton, If/ForEach regions, IOBoxes, Channel, Stride, " +
-        "SDSL shaders. One read per session is enough.";
+        "(skip if already in context this session). It has correct XML for " +
+        "all IOBox types, If/ForEach regions with ControlPoint splicers, and common " +
+        "process nodes (LFO, S+H, Changed, Switch). One read per session is enough. " +
+        "For Stride/Skia/Fuse/channel graphs use read_knowledge(\"vl-common-graphs\"); " +
+        "for definitions/channels/C# interop use read_knowledge(\"vl-building-blocks\").";
 
     public PatchTools(PatchReaderService patchReader, PatchExplainerService explainer)
     {
